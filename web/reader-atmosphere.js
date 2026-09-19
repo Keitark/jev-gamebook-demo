@@ -1,5 +1,6 @@
 /* Presentation-only layer. Load after reader-ui/page-turn/sound and before app.
- * It does not change action IDs, ordering, probabilities, rules, RNG or folios.
+ * It does not change action IDs, probabilities, rules, RNG or folios.
+ * The item tray partitions visual actions; provider choices remain intact.
  * Public base classes stay usable by older captures; the normal UI uses these
  * bounded, pooled renderers. No remote assets or fonts are needed here.
  */
@@ -98,7 +99,7 @@
     const source = decision.probability_source || (decision.source === 'random' ? 'uniform' : decision.source === 'browser' ? 'browser_self_report' : 'provider');
     $('inkLegend').textContent = hasScores ? ({uniform:'Random の抽選確率', browser_self_report:'ブラウザAIの自己申告'}[source] || 'モデルが返した選択確率') : decision.source === 'forced' ? '分岐なし · エンジン処理' : '手動選択 · 確率情報なし';
     $('inkLegend').hidden = false;
-    const available = [...$('choices').querySelectorAll('[data-choice]')];
+    const available = [...document.querySelectorAll('#choices [data-choice], #itemChoices [data-choice]')];
     const selected = available.find(button => button.dataset.choice === decision.choice);
     const marks = [];
     for (const button of available) {
@@ -108,7 +109,7 @@
       }
     }
     if (!selected) return;
-    const parent = $('choices'), rect = selected.getBoundingClientRect(), shelf = parent.getBoundingClientRect();
+    const parent = selected.parentElement, rect = selected.getBoundingClientRect(), shelf = parent.getBoundingClientRect();
     if (rect.bottom > shelf.bottom) parent.scrollTop += rect.bottom - shelf.bottom + 7;
     if (rect.top < shelf.top) parent.scrollTop += rect.top - shelf.top - 7;
     selected.classList.add('ink-picked');
@@ -127,6 +128,116 @@
     await motion(check.up, [{strokeDashoffset:'1'}, {strokeDashoffset:'0'}], {duration:MOTION.up, fill:'forwards', easing:'cubic-bezier(.08,.6,.15,1)'});
     await motion(check.fleck, [{opacity:0}, {opacity:.6}], {duration:70, fill:'both'});
     if (!document.hidden) await sleep(MOTION.hold);
+  };
+
+
+  // Main choices and consumables are separate visual groups. Move the actual
+  // button nodes, retaining their click listeners and authoritative action IDs.
+  const isItemAction = key => /^(use:|equip:|kai:equip:)/.test(key || '') || key === 'kai:potion';
+  const baseDecorate = window.ReaderUI.decorate;
+  const combatItemSlots = [
+    ['use:tonic', '回復薬'], ['use:bandage', '清め布'],
+    ['use:saltbomb', '鳴塩を投げる'], ['use:smoke', '煙玉'],
+  ];
+  const mainOrder = ['combat:attack', 'combat:precision', 'combat:guard', 'combat:flee'];
+  function itemTray() {
+    let area = $('itemArea');
+    if (!area) {
+      area = document.createElement('section'); area.id = 'itemArea'; area.className = 'item-area';
+      area.setAttribute('aria-labelledby', 'itemAreaLabel');
+      const header = document.createElement('div'); header.id = 'itemAreaLabel'; header.className = 'item-area-label';
+      header.textContent = '道具を使う / 装備';
+      const list = document.createElement('div'); list.id = 'itemChoices'; list.className = 'item-choices';
+      area.append(header, list); $('actionShelf').insertBefore(area, $('actionExplanation'));
+    }
+    return area;
+  }
+  function unavailableItem(key, label) {
+    const button = document.createElement('button'); button.className = 'choice-button unavailable';
+    button.disabled = true; button.dataset.slot = key; button.setAttribute('aria-disabled', 'true');
+    for (const name of ['choice-roman', 'choice-label', 'choice-target']) {
+      const span = document.createElement('span'); span.className = name; button.append(span);
+    }
+    button.querySelector('.choice-label').textContent = label;
+    return button;
+  }
+  function itemDetail(run, key, legal) {
+    if (run.mode === 'lonewolf_kai') {
+      const count = run.character?.backpack?.find(item => item.name === 'Healing Potion')?.count || 0;
+      if (key === 'kai:potion') return `残り ${count} · ${legal ? 'ENDURANCE +4' : run.combat_state ? '戦闘中は使えない' : count ? '体力は最大' : '所持していない'}`;
+      return legal ? '使用する武器を変更' : '現在は装備できない';
+    }
+    const item = run.character?.inventory?.find(entry => entry.id === key.split(':')[1]);
+    if (key.startsWith('equip:')) return '装備を変更';
+    const count = item?.count || 0;
+    const hint = !count ? '所持していない' : !legal ? (key === 'use:smoke' ? 'この戦闘では撤退不可' : '体力は最大') :
+      key === 'use:saltbomb' ? '固定ダメージ' : key === 'use:smoke' ? '確実に撤退' : '体力を回復';
+    return `残り ${count} · ${hint}`;
+  }
+  window.ReaderUI.decorate = function(run) {
+    const area = itemTray(), items = $('itemChoices'), main = $('choices');
+    // app.render has just rebuilt #choices. Remove the old tray before base
+    // decoration assigns DOM IDs, preventing stale/duplicate item buttons.
+    const renderKey = `${run.run_id || run.book || run.mode}:${run.current}:${run.revision}`;
+    if (area.dataset.renderKey === renderKey) {
+      const fresh = new Set([...main.children].map(button => button.dataset.choice || button.dataset.slot));
+      for (const button of [...items.querySelectorAll('.choice-button')]) {
+        const key = button.dataset.choice || button.dataset.slot;
+        if (!fresh.has(key) && run.section.choices.some(action => action.key === key)) main.append(button);
+      }
+    }
+    items.replaceChildren(); area.dataset.renderKey = renderKey;
+    baseDecorate(run);
+    const supportsItems = !!run.character;
+    const legal = new Map(run.section.choices.map(action => [action.key, action]));
+    for (const button of [...main.children]) {
+      if (isItemAction(button.dataset.choice || button.dataset.slot)) items.append(button);
+    }
+    if (run.combat_state && run.mode === 'story_rpg') {
+      const byId = new Map([...main.children].map(button => [button.dataset.choice || button.dataset.slot, button]));
+      main.replaceChildren(...mainOrder.map(key => byId.get(key)).filter(Boolean),
+        ...[...byId].filter(([key]) => !mainOrder.includes(key)).map(([,button]) => button));
+    }
+    // Keep the four consumable slots in the same positions even as they run out.
+    if (run.mode === 'story_rpg' && run.combat_state) {
+      const byId = new Map([...items.children].map(button => [button.dataset.choice || button.dataset.slot, button]));
+      items.replaceChildren(...combatItemSlots.map(([key, label]) => byId.get(key) || unavailableItem(key, label)),
+        ...[...byId].filter(([key]) => !combatItemSlots.some(([slot]) => slot === key)).map(([,button]) => button));
+    }
+    area.hidden = !supportsItems || run.status !== 'live';
+    $('actionShelf').dataset.itemTray = String(!area.hidden);
+    const mainChoices = run.section.choices.filter(action => !isItemAction(action.key));
+    const itemChoices = run.section.choices.filter(action => isItemAction(action.key));
+    $('actionCount').textContent = `${mainChoices.length} ACTIONS · ${itemChoices.length} ITEMS`;
+    $('itemAreaLabel').textContent = run.mode === 'lonewolf_kai' ? '道具 / 使用武器' : '道具を使う / 装備';
+    for (const [i, button] of [...main.children].entries()) {
+      button.querySelector('.choice-roman').textContent = `${i + 1}.`;
+      button.dataset.slotIndex = String(i); button.dataset.actionGroup = 'main';
+      button.setAttribute('aria-keyshortcuts', String(i + 1));
+      const action = legal.get(button.dataset.choice);
+      const label = action?.text || button.querySelector('.choice-label').textContent;
+      button.setAttribute('aria-label', `${i + 1}. ${label}${button.classList.contains('unavailable') ? '（使用不可）' : ''}`);
+    }
+    for (const button of [...items.children]) {
+      const key = button.dataset.choice || button.dataset.slot, action = legal.get(key);
+      button.dataset.actionGroup = 'item'; button.querySelector('.choice-roman').textContent = '道';
+      button.removeAttribute('aria-keyshortcuts'); delete button.dataset.slotIndex;
+      const detail = itemDetail(run, key, !!action);
+      button.querySelector('.choice-target').textContent = detail;
+      const label = action?.text || button.querySelector('.choice-label').textContent;
+      button.setAttribute('aria-label', `道具: ${label}（${detail}）`);
+      button.title = `${label}（${detail}）`;
+      button.disabled = !action || run.status !== 'live' || !!window.gamebook?.app.busy;
+      button.addEventListener('mouseenter', () => $('actionExplanation').textContent = button.title);
+      button.addEventListener('focus', () => $('actionExplanation').textContent = button.title);
+    }
+    let empty = $('itemEmpty');
+    if (!empty) { empty = document.createElement('p'); empty.id = 'itemEmpty'; empty.textContent = '今使える道具・変更できる装備はありません。'; items.append(empty); }
+    empty.hidden = items.querySelectorAll('.choice-button').length > 0;
+    items.scrollTop = 0;
+    $('actionExplanation').textContent = run.combat_state && run.mode === 'story_rpg' ?
+      '1–4：攻撃・精密攻撃・防御・撤退。道具は下の別枠。' :
+      '物語の選択と、道具の使用・装備変更を分けて表示しています。';
   };
 
   // .resume() is intentionally fire-and-observe: permission/hardware readiness
@@ -391,5 +502,5 @@
     const tick=setInterval(()=>{if(!document.hidden)updateTiming();},500);
     window.addEventListener('pagehide',()=>clearInterval(tick),{once:true});
   };
-  window.ReaderAtmosphere={version:'1.0',timing:diagnostics,travelPlan,inkPercentage,motion:MOTION};
+  window.ReaderAtmosphere={version:'1.1-items',timing:diagnostics,travelPlan,inkPercentage,motion:MOTION};
 })();

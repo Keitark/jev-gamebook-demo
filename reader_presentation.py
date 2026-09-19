@@ -11,14 +11,19 @@ from typing import Any
 
 ORDER_MODES = {'original', 'balanced'}
 COMBAT_SLOTS = (
-    'combat:attack', 'combat:precision', 'combat:guard', 'use:tonic',
-    'use:bandage', 'use:saltbomb', 'use:smoke', 'combat:flee',
+    'combat:attack', 'combat:precision', 'combat:guard', 'combat:flee',
+    'use:tonic', 'use:bandage', 'use:saltbomb', 'use:smoke',
 )
 KAI_SLOTS = ('kai:combat', 'kai:evade')
 
 
 def _key(action: Any) -> str:
     return action['key'] if isinstance(action, dict) else action.key
+
+
+def _is_item(action: Any) -> bool:
+    key = _key(action)
+    return key.startswith(('use:', 'equip:', 'kai:equip:')) or key == 'kai:potion'
 
 
 def binding(book, section_id: str) -> dict:
@@ -34,17 +39,21 @@ def ordered(run, actions: list, *, provider: bool = False) -> list:
 
     Independent hash scores keep surviving actions in relative order, and do not
     consume the combat or RandomController RNG. Combat UI slots stay fixed.
+    Main actions precede the separate item tray in the visual audit order.
     """
     if not provider and run.engine is not None and run.engine.combat_view():
         slots = KAI_SLOTS if run.book_id == 'aon_kai' else COMBAT_SLOTS
         return sorted(actions, key=lambda a: (slots.index(_key(a)) if _key(a) in slots else len(slots), _key(a)))
-    if run.choice_order != 'balanced':
-        return list(actions)
-    domain = f'provider:{run.revision}' if provider else 'display'
-    def score(action):
-        payload = f'{run.seed}|{run.book_id}|{run.current}|{domain}|{_key(action)}'
-        return hashlib.sha256(payload.encode()).digest()
-    return sorted(actions, key=score)
+    result = list(actions)
+    if run.choice_order == 'balanced':
+        domain = f'provider:{run.revision}' if provider else 'display'
+        def score(action):
+            payload = f'{run.seed}|{run.book_id}|{run.current}|{domain}|{_key(action)}'
+            return hashlib.sha256(payload.encode()).digest()
+        result.sort(key=score)
+    if not provider:
+        result.sort(key=_is_item)  # Stable partition; identical action objects.
+    return result
 
 
 def presentation(run, snapshot: dict) -> dict:
