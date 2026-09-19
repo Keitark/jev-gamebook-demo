@@ -91,6 +91,14 @@ OPENROUTER_API_KEY=your_openrouter_key
 
 9節のオリジナル短編。外部ダウンロード不要です。正解経路をコントローラーへ教えるコードは入れていません。Randomは本当に均等抽選で、Jevの推論結果と取り違えないよう表示しています。手動や分岐のない続きには、架空のconfidenceを表示しません。
 
+### Project Aon / Kai Rules compatibility
+
+設定の本棚から **Flight from the Dark（Project Aon・Kai互換戦闘）** を選ぶと、分岐だけのAon表示とは別に、Action ChartとKai基本戦闘をサーバー側で処理します。COMBAT SKILL / ENDURANCE、Combat Ratio、0〜9のRandom Number、Combat Results Table、Weaponskill、Mindblast、Healing、武器・Backpack上限、Evasionを実装しています。
+
+Project Aon XMLの `<combat>` から敵名・COMBAT SKILL・ENDURANCEを読み、戦闘中は通常の分岐をいったん止めてラウンドを解決します。ブラウザ設定で開始時のCOMBAT SKILL、ENDURANCE、5つのKai Disciplines、Weaponskill武器、開始武器、Gold Crownsを指定できます。
+
+ただし、本文だけに書かれた道具取得、支払い、Meal指示、Special Item効果、一時補正などを無理に推測して自動反映はしません。これは **Kai core-rules compatibility** です。詳細と実装範囲は [KAI_RULES.md](KAI_RULES.md)。
+
 ### Project Aon / Flight from the Dark
 
 設定で本を選び、[Project Aonの利用条件](https://www.projectaon.org/en/Main/License)を確認してから、明示的にダウンロードしてください。既に持っている `01fftd.xml` を `web_app.py` と同じフォルダに置くこともできます。

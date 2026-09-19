@@ -49,6 +49,7 @@ class Section:
     choices: List[Choice]
     deadend: bool = False
     combat: List[str] = field(default_factory=list)
+    combat_data: List[dict] = field(default_factory=list)
     paragraphs: List[str] = field(default_factory=list)
     title: str = ""
 
@@ -117,10 +118,28 @@ class ProjectAonBook:
 
             deadend = bool(data.xpath('.//*[local-name()="deadend"]'))
             combats = []
+            combat_data = []
             for c in data.xpath('.//*[local-name()="combat"]'):
                 txt = element_text(c)
                 if txt:
                     combats.append(txt)
+                enemy_nodes = c.xpath('./*[local-name()="enemy"]')
+                name = element_text(enemy_nodes[0]) if enemy_nodes else "Enemy"
+                attrs = {}
+                for attr in c.xpath('.//*[local-name()="enemy-attribute"]'):
+                    cls = (attr.get("class") or "").strip().lower()
+                    raw = clean_text(attr.text or "")
+                    try:
+                        value = int(raw)
+                    except ValueError:
+                        continue
+                    attrs[cls] = value
+                if "combatskill" in attrs and "endurance" in attrs:
+                    combat_data.append({
+                        "enemy": name,
+                        "combat_skill": attrs["combatskill"],
+                        "endurance": attrs["endurance"],
+                    })
 
             sections[sid] = Section(
                 id=sid,
@@ -128,6 +147,7 @@ class ProjectAonBook:
                 choices=choices,
                 deadend=deadend,
                 combat=combats,
+                combat_data=combat_data,
                 paragraphs=pieces,
             )
 

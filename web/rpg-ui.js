@@ -25,7 +25,7 @@
     const p = document.createElement('p'); p.textContent = detail; el.append(head, p); return el;
   }
   function journal() {
-    if (!run?.character) return;
+    if (!run?.character || run.mode !== 'story_rpg') return;
     const c = run.character, container = $('journalContents'); container.replaceChildren();
     document.querySelectorAll('[data-journal-tab]').forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.journalTab === tab)); });
     if (tab === 'inventory') {
@@ -50,7 +50,7 @@
       for (const [title, detail] of rules) container.append(card(title, detail));
     }
   }
-  function open(tabName) { if (!run?.character) return; window.gamebook?.stop(true); tab = tabName; journal(); $('journalDialog').showModal(); }
+  function open(tabName) { if (!run?.character || run.mode !== 'story_rpg') return; window.gamebook?.stop(true); tab = tabName; journal(); $('journalDialog').showModal(); }
   function render(next) {
     run = next; const active = run.mode === 'story_rpg';
     document.body.classList.toggle('rpg-mode', active);
@@ -60,7 +60,13 @@
     $('blockedChoices').replaceChildren(); $('battleEvents').replaceChildren();
     text('modeTitle', active ? 'FULL RULES · 日本語編' : 'NAVIGATION EDITION');
     text('modeDetail', active ? '戦闘・装備・所持品・条件判定あり。' : '分岐を辿る実験版。戦闘・所持品・条件判定は未実装。');
-    if (!active) { if ($('journalDialog').open) $('journalDialog').close(); return; }
+    if (!active) { if ($('journalDialog').open && document.body.classList.contains('rpg-mode')) $('journalDialog').close(); return; }
+    document.querySelector('label[for="hpMeter"]').textContent = '体力';
+    document.querySelector('label[for="focusMeter"]').closest('.vital-row').hidden = false; $('focusMeter').hidden = false;
+    document.querySelector('label[for="focusMeter"]').textContent = '集中';
+    const supplies = document.querySelectorAll('.supply-row > div > span'); if (supplies[0]) supplies[0].textContent = '銀貨'; if (supplies[1]) supplies[1].textContent = '潮位';
+    const tabs = document.querySelectorAll('[data-journal-tab]'); if (tabs[0]) tabs[0].textContent = '荷物と装備'; if (tabs[1]) tabs[1].textContent = '手がかり'; if (tabs[2]) tabs[2].textContent = 'ルール';
+    $('bagBtn').textContent = '荷物・装備'; $('cluesBtn').textContent = '手がかり'; $('rulesBtn').textContent = '?';
     $('leftPage').lang = 'ja'; $('rightPage').lang = 'ja';
     text('hpValue', `${run.character.hp} / ${run.character.max_hp}`);
     meter('hpMeter', run.character.hp, run.character.max_hp);

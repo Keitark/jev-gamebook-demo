@@ -52,6 +52,7 @@
   function controls() {
     const live = app.run?.status === 'live';
     window.RPGUI?.busy(app.busy);
+    window.KaiUI?.busy(app.busy);
     $('stepBtn').disabled = app.busy || !live;
     $('resetBtn').disabled = app.busy; $('settingsBtn').disabled = app.busy;
     $('backend').disabled = app.busy; $('exportBtn').disabled = !app.run || app.busy;
@@ -147,6 +148,7 @@
     updateScrollHint(); requestAnimationFrame(updateScrollHint);
     $('passageScroll').scrollTop = previousScroll; showDecision(run.last_decision);
     window.RPGUI?.render(run);
+    window.KaiUI?.render(run);
     if (run.mode === 'story_rpg') {
       text('runStatus', run.status === 'live' ? (run.combat_state ? '戦闘中' : '探索中') : '終幕');
       text('bookCaption', '灰鐘奇譚 · 戦闘と探索の書');
@@ -163,6 +165,26 @@
           button.querySelector('.choice-target').textContent = a.kind === 'equipment' ? '装備' : a.kind === 'item' ? '道具' : '一手';
         }
       });
+    } else if (run.mode === 'lonewolf_kai') {
+      $('leftPage').lang = 'en'; $('rightPage').lang = 'en';
+      text('runStatus', run.status === 'live' ? (run.combat_state ? 'COMBAT' : 'EXPLORING') : run.status.toUpperCase());
+      text('bookCaption', 'PROJECT AON · KAI RULES COMPATIBILITY');
+      text('sourceNote', 'Project Aon text · Kai core rules engine · Action Chart state stays server-side');
+      text('choiceHeading', run.status === 'live' ? (run.combat_state ? 'Resolve the next combat round' : 'Choose your path') : 'The end of this journey');
+      text('endingTitle', run.status === 'success' ? 'Mission complete.' : run.status === 'deadend' ? 'Lone Wolf has fallen.' : 'The book is closed for now.');
+      text('endingNote', run.status === 'success' ? 'The configured goal section was reached under the compatibility engine.' : 'See the Action Chart and run log for the final state.');
+      document.querySelector('.book-subtitle').textContent = 'Kai Action Chart · Combat Results Table';
+      document.querySelector('.illustration-caption').textContent = 'SOMMERLUND · A COMPATIBILITY READING';
+      document.querySelectorAll('.choice-button').forEach(button => {
+        const a = run.section.choices.find(c => c.key === button.dataset.choice);
+        if (a?.kind?.startsWith('kai_')) {
+          button.dataset.kind = a.kind;
+          button.querySelector('.choice-target').textContent = a.kind === 'kai_combat' ? 'CRT' : a.kind === 'kai_evade' ? 'EVADE' : 'ACTION';
+        } else if (a?.kind === 'item' || a?.kind === 'equipment') {
+          button.dataset.kind = a.kind;
+          button.querySelector('.choice-target').textContent = a.kind === 'item' ? 'ITEM' : 'WEAPON';
+        }
+      });
     } else {
       $('leftPage').lang = 'en'; $('rightPage').lang = 'en';
       document.querySelector('.book-subtitle').textContent = 'A tale of choices & consequences';
@@ -177,7 +199,7 @@
     const el = $('passageScroll');
     const more = el.scrollHeight - el.clientHeight - el.scrollTop > 8;
     $('pageHint').classList.toggle('scroll-hint', more);
-    text('pageHint', more ? '↓ ページ内をスクロールして続きを表示' : app.run?.mode === 'story_rpg' ? '荷物・手がかりは左の手帖から確認' : app.run?.section.combat?.length ? 'Combat described · rules not simulated' : 'Choose a passage to turn the page');
+    text('pageHint', more ? '↓ ページ内をスクロールして続きを表示' : app.run?.mode === 'story_rpg' ? '荷物・手がかりは左の手帖から確認' : app.run?.mode === 'lonewolf_kai' ? 'Action Chartは左の手帖から確認' : app.run?.section.combat?.length ? 'Combat described · rules not simulated' : 'Choose a passage to turn the page');
   }
   $('passageScroll').addEventListener('scroll', updateScrollHint, {passive:true});
   new ResizeObserver(updateScrollHint).observe($('passageScroll'));
@@ -193,12 +215,13 @@
       const selected = [...$('choices').children].find(b => b.dataset.choice === result.last_decision.choice);
       selected?.classList.add('selected'); showDecision(result.last_decision);
       await wait(turner.reduced ? 30 : 320);
-      if (result.mode === 'story_rpg' && result.current === app.run.current) {
-        render(result); // A combat round is not a new passage.
+      if (['story_rpg', 'lonewolf_kai'].includes(result.mode) && result.current === app.run.current) {
+        render(result); // A combat round or inventory action is not a new passage.
       } else {
         await turner.turn(() => render(result));
       }
       if (result.mode === 'story_rpg' && result.status === 'live') window.RPGUI?.sound(result.last_decision.events, audio);
+      if (result.mode === 'lonewolf_kai' && result.status === 'live') window.KaiUI?.sound(result.last_decision.events, audio);
       const d = result.last_decision;
       log(`§ ${d.section} → § ${d.target}`, sourceNames[d.source]);
       if (result.status !== 'live') {
@@ -216,13 +239,27 @@
       if (app.auto && app.run.status === 'live') app.timer = setTimeout(() => step(), Number($('pace').value));
     }
   }
-  async function newRun({book, profile, seed} = {}) {
+  async function newRun({book, profile, seed, kaiConfig} = {}) {
     stop(true); app.busy = true; controls();
     try {
-      const run = await api('/api/runs', {book: book || app.run?.book || 'ashbell', profile: profile ?? $('profile').value, seed: seed ?? Number($('seed').value)});
+      const payload = {book: book || app.run?.book || 'ashbell', profile: profile ?? $('profile').value, seed: seed ?? Number($('seed').value)};
+      if (payload.book === 'aon_kai') payload.kai_config = kaiConfig || readKaiConfig();
+      const run = await api('/api/runs', payload);
       render(run); $('events').replaceChildren(); log('A new journey', run.title); $('notice').hidden = true;
     } finally { app.busy = false; controls(); }
   }
+  function readKaiConfig() {
+    const disciplines = [...document.querySelectorAll('input[name="kaiDiscipline"]:checked')].map(el => el.value);
+    if (disciplines.length !== 5) throw new Error('Kai互換モードではKai Disciplinesを5つ選んでください。');
+    const weapon = $('kaiWeapon').value || null;
+    const cs = Number($('kaiCS').value), endurance = Number($('kaiEndurance').value), gold = Number($('kaiGold').value);
+    if (!Number.isInteger(cs) || cs < 10 || cs > 19) throw new Error('COMBAT SKILL は10〜19にしてください。');
+    if (!Number.isInteger(endurance) || endurance < 20 || endurance > 29) throw new Error('ENDURANCE は20〜29にしてください。');
+    if (!Number.isInteger(gold) || gold < 0 || gold > 50) throw new Error('Gold Crowns は0〜50にしてください。');
+    return {combat_skill: cs, endurance, gold, disciplines, weaponskill_weapon: $('kaiWeaponskill').value,
+      weapons: weapon ? [weapon] : [], active_weapon: weapon, backpack: {'Meal': 2, 'Healing Potion': 1}, special_items: []};
+  }
+
   function refreshStatus() {
     for (const value of ['jev', 'openrouter']) {
       const option = $('backend').querySelector(`option[value="${value}"]`);
@@ -231,7 +268,8 @@
     }
     text('keyStatus', `TypeSafe: ${app.status.keys.jev ? '設定済み' : '未設定'} / OpenRouter: ${app.status.keys.openrouter ? '設定済み' : '未設定'}。キーを .env に記入したらサーバーを再起動してください。`);
     $('connection').classList.remove('error'); $('connection').querySelector('span').textContent = 'LOCAL READING ROOM';
-    const needsAon = $('bookSelect').value === 'aon' && !app.status.books.find(b => b.id === 'aon').ready;
+    const needsAon = ['aon', 'aon_kai'].includes($('bookSelect').value) && !app.status.books.find(b => b.id === 'aon').ready;
+    $('kaiSetup').hidden = $('bookSelect').value !== 'aon_kai';
     $('aonInstall').hidden = !needsAon;
   }
   $('stepBtn').addEventListener('click', () => step());
@@ -273,7 +311,7 @@
     try {
       const seed = Number($('seed').value);
       if (!Number.isInteger(seed) || seed < 0 || seed > 4294967295) throw new Error('seed は 0〜4294967295 の整数にしてください。');
-      await newRun({book: $('bookSelect').value, profile: $('profile').value, seed}); $('settings').close();
+      await newRun({book: $('bookSelect').value, profile: $('profile').value, seed, kaiConfig: $('bookSelect').value === 'aon_kai' ? readKaiConfig() : undefined}); $('settings').close();
     } catch (error) { notice(error.message, true); }
     finally { $('applySettings').disabled = false; }
   });
@@ -318,6 +356,7 @@
     } finally { app.busy = false; controls(); }
   }
   window.RPGUI?.init(key => step(key));
+  window.KaiUI?.init(key => step(key));
   // Read-only state plus public UI operations for automated interaction tests.
   window.gamebook = {app, audio, turner, step, newRun, stop};
   boot();

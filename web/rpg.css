@@ -33,3 +33,25 @@ progress::-webkit-progress-bar{background:#353a2b}progress::-webkit-progress-val
 @media(max-width:760px){.rpg-mode .paper.recto{padding:22px 24px}.rpg-mode .story-text{font-size:17px;line-height:1.95}.rpg-mode .choice-button{font-size:14px}.rpg-mode .passage-header h2{font-size:24px}.rpg-mode .spread{height:710px}.rpg-mode .right-rail .battle-panel{margin-bottom:20px}.rpg-mode .right-rail .decision-route{font-size:29px}.rpg-mode .right-rail .picked-text{font-size:12px}.journal-card-head strong{font-size:16px}.journal-tabs button{padding:8px 10px}.journal-dialog{padding:24px 18px}}
 
 .rpg-mode.large-type .story-text{font-size:21px}.rpg-mode.large-type .choice-button{font-size:16px}
+
+/* Project Aon / Lone Wolf Kai compatibility mode */
+.kai-mode{--kai-gold:#c9ac6b;--kai-red:#a56c54}
+.kai-mode .paper,.kai-mode .picked-text,.kai-mode .events .event-text{font-family:"IM Fell English","URW Bookman",Georgia,serif}
+.kai-mode .story-text{font-family:"IM Fell English","URW Bookman",Georgia,serif;font-size:17px;line-height:1.72}
+.kai-mode .passage-header h2,.kai-mode .verso h1{font-family:"IM Fell English","URW Bookman",Georgia,serif}
+.kai-mode .choice-button{font-family:"IM Fell English","URW Bookman",Georgia,serif;font-size:15px;line-height:1.55}
+.kai-mode .character-panel progress::-webkit-progress-value{background:#c6ad69}.kai-mode .character-panel progress::-moz-progress-bar{background:#c6ad69}
+.kai-mode .supply-row strong{color:#d9c590}
+.kai-mode .gear-stats{color:#c2b58e}
+.kai-mode .battle-panel{border-color:#a3785070;background:linear-gradient(150deg,#4a3a2865,#26211930)}
+.kai-mode .battle-panel h3{font-family:"IM Fell English",Georgia,serif;color:#ead5ac}
+.kai-mode .enemy-intent{font-family:var(--ui);font-size:10px;letter-spacing:.12em;color:#d2b77d;border-left-color:#b99a62}
+.kai-mode .combat-banner{font-family:"IM Fell English",Georgia,serif;color:#74452e;border-color:#9a745050;background:#9a70420b}
+.kai-mode .journal-card-head strong{font-family:"IM Fell English",Georgia,serif}
+.kai-mode .mode-note span{color:#d7bd7e}
+.choice-button[data-kind="kai_combat"]{border-color:#9b68494d;background:#8c54320a}.choice-button[data-kind="kai_combat"] .choice-target{color:#bb7555}
+.choice-button[data-kind="kai_evade"]{border-color:#71815b55;background:#6d7b5109}.choice-button[data-kind="kai_evade"] .choice-target{color:#8fa56e}
+.kai-setup{border:1px solid #5c563f;background:#1d1c17;padding:14px 15px;margin:12px 0 16px;border-radius:4px}.kai-setup>p{font-size:11px;line-height:1.7;color:#aaa38f}.kai-setup .smallcaps{color:#cfb979}.kai-numbers input{font-variant-numeric:tabular-nums}.discipline-grid{border:1px solid #454536;margin:14px 0;padding:10px 12px 12px;display:grid;grid-template-columns:1fr 1fr;gap:7px 12px}.discipline-grid legend{font-size:9px;letter-spacing:.11em;color:#afa889;padding:0 6px}.discipline-grid label{display:flex;align-items:center;gap:7px;font-size:11px;color:#c2baa4;margin:0}.discipline-grid input{accent-color:#9eae75}
+@media(max-width:760px){.kai-mode .story-text{font-size:17px;line-height:1.78}.discipline-grid{grid-template-columns:1fr}.kai-setup{padding:12px}}
+@media(max-width:1050px){.kai-mode .left-rail{flex-wrap:wrap}.kai-mode .character-panel{order:10;width:100%;display:grid;grid-template-columns:72px 1fr 1fr;gap:7px 12px;align-items:center;margin:0;padding:8px 0;border:0}.kai-mode .character-panel .vital-row{display:contents}.kai-mode .character-panel .vital-row strong{font-size:10px}.kai-mode .character-panel progress{display:none}.kai-mode .supply-row{display:flex;margin:0;grid-column:2/4;gap:20px}.kai-mode .supply-row>div{flex-direction:row;align-items:center;gap:8px}.kai-mode .supply-row strong{font-size:17px}.kai-mode .gear-stats{grid-column:1/4;margin:0}.kai-mode .journal-buttons{order:11;width:100%;margin:0}.kai-mode .journal-buttons button{flex:1;padding:8px}.kai-mode .journal-buttons button:last-child{max-width:40px}.kai-mode .left-rail>.rail-block{margin:0}}
+@media(max-width:760px){.kai-mode .left-rail{gap:8px}.kai-mode .character-panel{grid-template-columns:64px 1fr 1fr}.kai-mode .left-rail select{width:150px}.kai-mode .journal-buttons button{font-size:9px}.kai-mode .paper.recto{padding:22px 24px}.kai-mode .story-text{font-size:17px;line-height:1.75}.kai-mode .choice-button{font-size:14px;line-height:1.6}.kai-mode .passage-header h2{font-size:25px}.kai-mode .spread{height:700px}}

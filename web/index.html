@@ -137,10 +137,30 @@
   <dialog id="settings" class="settings">
     <form method="dialog" class="dialog-close"><button class="icon-button" aria-label="設定を閉じる">×</button></form>
     <span class="smallcaps">READING ROOM SETTINGS</span><h2>読書室の設定</h2>
-    <label for="bookSelect">本棚</label><select id="bookSelect"><option value="ashbell">灰鐘の港と、名前のない朝（日本語・戦闘あり）</option><option value="demo">The Ashen Gate（オリジナル・キー不要）</option><option value="aon">Flight from the Dark（Project Aon）</option></select>
+    <label for="bookSelect">本棚</label><select id="bookSelect"><option value="ashbell">灰鐘の港と、名前のない朝（日本語・戦闘あり）</option><option value="demo">The Ashen Gate（オリジナル・キー不要）</option><option value="aon">Flight from the Dark（Project Aon・分岐のみ）</option><option value="aon_kai">Flight from the Dark（Project Aon・Kai互換戦闘）</option></select>
     <div id="aonInstall" class="aon-install" hidden><p>本の本文は同梱していません。<a href="https://www.projectaon.org/en/Main/License" target="_blank" rel="noopener noreferrer">Project Aon の利用条件</a>を確認してから取得してください。</p><label class="check-label"><input type="checkbox" id="licenseCheck">利用条件を確認した</label><button type="button" id="downloadBtn" class="secondary-button">公式XMLを取得</button></div>
     <div id="keyStatus" class="key-status"></div>
-    <label for="profile">プレイヤー情報 <small>Jevへ渡す参考方針。日本語編の体力・荷物を上書きするものではありません。</small></label><textarea id="profile" rows="3" maxlength="8000" placeholder="例: Kai disciplines: Sixth Sense, Healing. Weapons: Sword."></textarea>
+    <section id="kaiSetup" class="kai-setup" hidden>
+      <span class="smallcaps">KAI ACTION CHART · STARTING VALUES</span>
+      <p>互換モード用の初期Action Chart。Kai基本ルールに従い、Disciplinesは5つ選択します。</p>
+      <div class="settings-grid kai-numbers"><div><label for="kaiCS">COMBAT SKILL</label><input id="kaiCS" type="number" min="10" max="19" value="15"></div><div><label for="kaiEndurance">ENDURANCE</label><input id="kaiEndurance" type="number" min="20" max="29" value="25"></div></div>
+      <div class="settings-grid"><div><label for="kaiGold">Gold Crowns</label><input id="kaiGold" type="number" min="0" max="50" value="10"></div><div><label for="kaiWeapon">Starting Weapon</label><select id="kaiWeapon"><option value="">Bare hands</option><option>Dagger</option><option>Spear</option><option>Mace</option><option>Short Sword</option><option>Warhammer</option><option selected>Sword</option><option>Axe</option><option>Quarterstaff</option><option>Broadsword</option></select></div></div>
+      <label for="kaiWeaponskill">Weaponskill Weapon</label><select id="kaiWeaponskill"><option>Dagger</option><option>Spear</option><option>Mace</option><option>Short Sword</option><option>Warhammer</option><option selected>Sword</option><option>Axe</option><option>Quarterstaff</option><option>Broadsword</option></select>
+      <fieldset class="discipline-grid"><legend>Kai Disciplines · exactly five</legend>
+        <label><input type="checkbox" name="kaiDiscipline" value="Camouflage">Camouflage</label>
+        <label><input type="checkbox" name="kaiDiscipline" value="Hunting" checked>Hunting</label>
+        <label><input type="checkbox" name="kaiDiscipline" value="Sixth Sense" checked>Sixth Sense</label>
+        <label><input type="checkbox" name="kaiDiscipline" value="Tracking">Tracking</label>
+        <label><input type="checkbox" name="kaiDiscipline" value="Healing" checked>Healing</label>
+        <label><input type="checkbox" name="kaiDiscipline" value="Weaponskill" checked>Weaponskill</label>
+        <label><input type="checkbox" name="kaiDiscipline" value="Mindshield">Mindshield</label>
+        <label><input type="checkbox" name="kaiDiscipline" value="Mindblast" checked>Mindblast</label>
+        <label><input type="checkbox" name="kaiDiscipline" value="Animal Kinship">Animal Kinship</label>
+        <label><input type="checkbox" name="kaiDiscipline" value="Mind Over Matter">Mind Over Matter</label>
+      </fieldset>
+      <p class="settings-note">開始時BackpackはMeal×2＋Healing Potion×1のサンプル構成。本文固有の装備取得や一時補正は、XMLから安全に機械判定できないものは自動適用しません。</p>
+    </section>
+    <label for="profile">プレイヤー情報 <small>Jevへ渡す参考方針。ゲーム内の体力・荷物・Action Chartを上書きするものではありません。</small></label><textarea id="profile" rows="3" maxlength="8000" placeholder="例: Avoid unnecessary risk; preserve ENDURANCE."></textarea>
     <div class="settings-grid"><div><label for="seed">Random seed</label><input id="seed" type="number" value="17" min="0" max="4294967295"></div><div><label for="pace">自動実行の間隔</label><select id="pace"><option value="1600">速め · 1.6秒</option><option value="3000" selected>標準 · 3秒</option><option value="6000">ゆっくり · 6秒</option></select></div></div>
     <label for="volume">音量 <span id="volumeLabel">35%</span></label><input type="range" id="volume" min="0" max="100" value="35">
     <div class="settings-grid"><label class="check-label"><input id="motion" type="checkbox">ページめくりを控えめに</label><label class="check-label"><input id="largeType" type="checkbox">本文を大きくする</label></div>
@@ -154,6 +174,7 @@
     <div id="journalContents"></div>
   </dialog>
   <script defer src="/static/rpg-ui.js"></script>
+  <script defer src="/static/kai-ui.js"></script>
   <script defer src="/static/sound.js"></script>
   <script defer src="/static/page-turn.js"></script>
   <script defer src="/static/app.js"></script>

@@ -50,7 +50,7 @@ def memory_page(page, server):
             return new Response(r.body, {status:r.status, headers:{'Content-Type':'application/json'}});
         };
     }''')
-    for name in ['rpg-ui.js', 'sound.js', 'page-turn.js', 'app.js']:
+    for name in ['rpg-ui.js', 'kai-ui.js', 'sound.js', 'page-turn.js', 'app.js']:
         page.add_script_tag(content=(ROOT / 'web' / name).read_text(encoding="utf-8"))
     page.wait_for_function('window.gamebook?.app.ready', timeout=10000)
     page.evaluate('document.fonts.ready')

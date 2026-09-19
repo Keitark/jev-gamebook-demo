@@ -26,3 +26,14 @@ Provider tests use stubs to verify that only currently available actions and obs
 ## Scope
 
 Combat and mutable inventory are implemented for **the original Japanese story**, not for Project Aon's Lone Wolf rules. The original English demonstration and imported Project Aon books continue to use navigation-only mode. JSON export is an audit record, not a restore/save-game feature. Sessions remain in server memory. This local single-user server is not intended for public hosting.
+
+## Kai compatibility mode
+
+Added 2026-09-19.
+
+- `python -m pytest -q`: **86 passed** after adding the Kai engine tests.
+- The tests check structured Project Aon `<combat>` parsing, official Kai table examples (`CR -3 / RN 6` and `CR 0 / RN 6`), instant-kill cells, Action Chart bounds, Weaponskill, Mindblast, unarmed penalty, Healing, Evasion semantics, server-side configuration and v3 export.
+- `python tools/kai_browser.py --memory --browser /usr/bin/chromium`: **8 UI groups passed, no JavaScript page errors**. Covers Kai mode label, ENDURANCE display, combat panel, CRT action, Action Chart dialog, actual Random Number + CRT event, Combat Ratio display and 390-pixel mobile width.
+- Existing Japanese RPG browser checks (17 groups) and legacy navigation checks (13 groups) still pass.
+
+No live paid Jev call was made for Kai mode. The Project Aon compatibility test uses a tiny synthetic XML fixture, not redistributed Project Aon book text.

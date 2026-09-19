@@ -22,6 +22,7 @@ from urllib.parse import unquote, urlsplit
 import requests
 from demo_book import OBJECTIVE, TITLE, make_demo
 from rpg_engine import RPGBook, RPGEngine, RuleError
+from lonewolf_rules import KaiEngine, KaiRuleError
 from story_ja import make_story
 from gamebook_jev import (
     DEFAULT_AON_XML, Choice, Decision, GamebookEnv, JevController,
@@ -59,7 +60,7 @@ class Run:
     created: float = field(default_factory=time.time)
     lock: threading.Lock = field(default_factory=threading.Lock)
     rng: RandomController = field(init=False)
-    engine: RPGEngine | None = field(default=None)
+    engine: RPGEngine | KaiEngine | None = field(default=None)
 
     def __post_init__(self):
         self.rng = RandomController(self.seed)
@@ -89,13 +90,15 @@ class Run:
             section = asdict(self.book.sections[self.current])
             section.update(choices=view['actions'], paragraphs=view['section']['text'],
                            text='\n\n'.join(view['section']['text']), combat=[])
+            mode = 'story_rpg' if isinstance(self.engine, RPGEngine) else 'lonewolf_kai'
             return {
                 'book': self.book_id, 'title': self.title, 'objective': self.objective,
-                'goal': None, 'revision': self.revision, 'current': self.current,
+                'goal': self.goal or None, 'revision': self.revision, 'current': self.current,
                 'path': self.path[:], 'steps': len(self.trace), 'status': self.status,
-                'mode': 'story_rpg', 'language': 'ja', 'total_sections': len(self.book.sections),
+                'mode': mode, 'language': 'ja' if mode == 'story_rpg' else 'en',
+                'total_sections': len(self.book.sections),
                 'section': section, 'character': view['character'], 'combat_state': view['combat'],
-                'blocked_choices': view['blocked'], 'ending': view['ending'],
+                'blocked_choices': view.get('blocked', []), 'ending': view.get('ending'),
                 'last_decision': self.trace[-1] if self.trace else None, 'max_steps': MAX_STEPS,
             }
         section = self.book.sections.get(self.current)
@@ -139,8 +142,9 @@ class GamebookService:
                 {"id": "ashbell", "title": "灰鐘の港と、名前のない朝", "ready": True, "original": True, "mode": "story_rpg", "language": "ja"},
                 {"id": "demo", "title": TITLE, "ready": True, "original": True, "mode": "navigation_only"},
                 {"id": "aon", "title": "Flight from the Dark", "ready": self.xml_path.is_file(), "original": False, "mode": "navigation_only"},
+                {"id": "aon_kai", "title": "Flight from the Dark · Kai Rules", "ready": self.xml_path.is_file(), "original": False, "mode": "lonewolf_kai"},
             ],
-            "modes": ["story_rpg", "navigation_only"], "max_steps": MAX_STEPS,
+            "modes": ["story_rpg", "lonewolf_kai", "navigation_only"], "max_steps": MAX_STEPS,
         }
 
     def new_run(self, data: dict) -> dict:
@@ -150,7 +154,7 @@ class GamebookService:
         elif book_id == "ashbell":
             book = make_story()
             title, goal, objective = book.spec['title'], '', book.spec['objective']
-        elif book_id == "aon":
+        elif book_id in {"aon", "aon_kai"}:
             if not self.xml_path.is_file():
                 raise AppError("Project Aon XML is not installed. Read the license and use Download in Settings.", 409)
             try:
@@ -172,6 +176,13 @@ class GamebookService:
         run = Run(book_id, book, title, objective, goal, profile, seed)
         if isinstance(book, RPGBook):
             run.engine = book.new_engine(seed)
+            run.current = run.engine.current
+            run.path = [run.current]
+        elif book_id == "aon_kai":
+            try:
+                run.engine = KaiEngine(book, seed=seed, goal=goal, config=data.get("kai_config"))
+            except KaiRuleError as exc:
+                raise AppError(str(exc), 400) from None
             run.current = run.engine.current
             run.path = [run.current]
         with self.lock:
@@ -285,7 +296,7 @@ class GamebookService:
                 trace['before'] = {'character': run.engine.character(), 'combat': run.engine.combat_view()}
                 try:
                     effect = run.engine.apply(chosen.key)
-                except RuleError as exc:
+                except (RuleError, KaiRuleError) as exc:
                     raise AppError(str(exc), 409) from None
                 trace['events'] = effect['events']
                 trace['after'] = {'character': effect['character'], 'combat': effect['combat']}
@@ -306,13 +317,21 @@ class GamebookService:
     def export(self, run_id: str) -> dict:
         run = self.get_run(run_id)
         with run.lock:
-            if run.engine is not None:
+            if isinstance(run.engine, RPGEngine):
                 return {'format': 'jev-gamebook-run/v2', 'mode': 'story_rpg',
                         'book': run.book_id, 'title': run.title, 'seed': run.seed,
                         'story_version': run.book.spec['version'], 'story_sha256': run.book.fingerprint,
                         'started_at': run.created, 'status': run.status, 'ending': run.engine.node.get('ending'),
                         'path': run.path[:], 'trace': run.trace[:], 'character': run.engine.character(),
                         'limitations': 'Original game rules only; not an implementation of Lone Wolf combat.'}
+            if isinstance(run.engine, KaiEngine):
+                return {'format': 'jev-gamebook-run/v3', 'mode': 'lonewolf_kai',
+                        'book': run.book_id, 'title': run.title, 'seed': run.seed,
+                        'started_at': run.created, 'status': run.status,
+                        'path': run.path[:], 'trace': run.trace[:], 'action_chart': run.engine.character(),
+                        'limitations': ('Kai core combat/equipment rules are implemented. Project Aon XML does not encode every '
+                                        'book-specific pickup, temporary modifier, meal instruction or conditional effect as '
+                                        'machine-readable state, so those prose instructions are not guessed automatically.')}
             return {"format": "jev-gamebook-run/v1", "mode": "navigation_only",
                     "book": run.book_id, "title": run.title, "seed": run.seed,
                     "started_at": run.created, "status": run.status,
