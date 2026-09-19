@@ -16,7 +16,20 @@ This is useful before implementing full combat/inventory rules because it isolat
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+cp .env.example .env
 ```
+
+Edit `.env` and put your key in the file:
+
+```dotenv
+# Direct TypeSafe Jev
+JEV_API_KEY=your_key_here
+
+# Or OpenRouter
+OPENROUTER_API_KEY=sk-or-v1-...
+```
+
+`.env` is gitignored and is loaded automatically from the repository directory.
 
 ### Smoke test without Jev
 
@@ -37,7 +50,7 @@ The default XML URL is:
 ## Run with Jev directly
 
 ```bash
-export JEV_API_KEY='...'
+# JEV_API_KEY is read automatically from .env
 python gamebook_jev.py \
   --backend jev \
   --download \
@@ -51,7 +64,7 @@ The direct API request uses `POST https://api.typesafe.ai/v1/systemone` and the 
 ## Run Jev through OpenRouter
 
 ```bash
-export OPENROUTER_API_KEY='...'
+# OPENROUTER_API_KEY is read automatically from .env
 python gamebook_jev.py \
   --backend openrouter \
   --download \
