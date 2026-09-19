@@ -1,0 +1,7 @@
+Combat Skill: 18
+Endurance: 28
+Kai disciplines: Camouflage, Hunting, Sixth Sense, Tracking, Healing
+Weapons: Sword
+Backpack: 2 Meals, Healing Potion
+Gold Crowns: 10
+Rules: do not claim disciplines/items not listed here.
