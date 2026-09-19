@@ -2,7 +2,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const roman = n => ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'][n - 1] || String(n);
-  const sourceNames = {random: 'RANDOM / UNIFORM', jev: 'JEV / TYPESAFE', openrouter: 'JEV / OPENROUTER', manual: 'MANUAL / HUMAN', forced: 'ENGINE / CONTINUATION'};
+  const sourceNames = {random: 'RANDOM / UNIFORM', jev: 'JEV / TYPESAFE', openrouter: 'JEV / OPENROUTER', manual: 'MANUAL / HUMAN', browser: 'BROWSER / SELF-REPORTED', forced: 'ENGINE / CONTINUATION'};
   const readPref = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch (_) { return fallback; } };
   const savePref = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {} };
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -13,6 +13,7 @@
   document.body.classList.toggle('large-type', readPref('gb.largeType', false));
   const app = {run: null, status: null, busy: false, auto: false, timer: null, ready: false, error: null};
   let noticeTimer;
+  $('orderMode').value = readPref('gb.orderMode', 'balanced');
 
   function notice(message, error = false) {
     clearTimeout(noticeTimer); text('notice', message);
@@ -51,6 +52,7 @@
   }
   function controls() {
     const live = app.run?.status === 'live';
+    $('book').setAttribute('aria-busy', String(app.busy));
     window.RPGUI?.busy(app.busy);
     window.KaiUI?.busy(app.busy);
     $('stepBtn').disabled = app.busy || !live;
@@ -61,7 +63,7 @@
     $('autoBtn').querySelector('span').textContent = app.auto ? '停止する' : '連続実行';
     $('autoBtn').querySelector('use').setAttribute('href', app.auto ? '#i-stop' : '#i-play');
     $('stepBtn').querySelector('span').textContent = app.busy ? ($('backend').value === 'random' ? 'ページを進めています…' : '判断を待っています…') : '次の一手';
-    document.querySelectorAll('.choice-button').forEach(button => { button.disabled = app.busy || !live; });
+    document.querySelectorAll('.choice-button').forEach(button => { button.disabled = app.busy || !live || button.classList.contains('unavailable'); });
     if (!live && app.run) text('helpText', '旅が終わりました。記録を保存するか、新しい旅を始めてください。');
     else if (app.auto) text('helpText', '自動実行中 · 停止すると現在の1手を終えて止まります');
     else text('helpText', '1–9 で選択 · Space で1手 · A で自動実行');
@@ -102,14 +104,16 @@
     }
     const model = ['jev', 'openrouter'].includes(d.source);
     text('latencyName', model ? 'API往復時間' : 'ローカル選択時間');
-    text('latencyValue', ['manual', 'forced'].includes(d.source) ? 'API call: none' : `${d.latency_ms.toFixed(model ? 0 : 2)} ms`);
+    text('latencyValue', ['manual', 'forced', 'browser'].includes(d.source) ? 'API call: none' : `${d.latency_ms.toFixed(model ? 0 : 2)} ms`);
     text('decisionNote', d.source === 'random' ? '均等分布からの抽選です。Jevの推論結果ではありません。' :
+      d.source === 'browser' ? 'ブラウザAIの自己申告確率です。Jevの応答や校正された成功率ではありません。' :
       d.source === 'manual' ? 'あなたが選んだ分岐です。モデルへの問い合わせはしていません。' :
       d.source === 'forced' ? '分岐のない続きはエンジンが進めます。モデル呼び出しは不要です。' : '選択確率やconfidenceは、冒険のクリア率ではありません。');
   }
   function render(run) {
     const previousScroll = app.run?.current === run.current ? $('passageScroll').scrollTop : 0;
     app.run = run;
+    window.ReaderUI?.clearInk();
     const section = run.section;
     text('sectionStat', run.current.padStart(2, '0')); text('movesStat', run.steps); text('visitedStat', new Set(run.path).size);
     text('runStatus', run.status === 'live' ? 'EXPLORING' : run.status.toUpperCase());
@@ -191,6 +195,7 @@
       document.querySelector('.illustration-caption').textContent = 'THE GATE AT THE END OF THE RIVER';
       $('battleLogPanel').hidden = true;
     }
+    window.ReaderUI?.decorate(run);
     updateScrollHint();
     try { sessionStorage.setItem('gb.run', run.run_id); } catch (_) {}
     controls();
@@ -203,22 +208,23 @@
   }
   $('passageScroll').addEventListener('scroll', updateScrollHint, {passive:true});
   new ResizeObserver(updateScrollHint).observe($('passageScroll'));
-  async function step(choice = null) {
+  async function step(choice = null, reported = null) {
     if (app.busy || app.run?.status !== 'live') return;
     if (choice) stop(true);
-    app.busy = true; controls(); $('notice').hidden = true;
+    app.error = null; app.busy = true; controls(); window.ReaderUI?.phase('thinking'); $('notice').hidden = true;
     try {
       await audio.unlock(); soundButton(); audio.play('ink');
       const data = {revision: app.run.revision, backend: $('backend').value};
       if (choice) data.choice = choice;
+      if (reported) { data.revision=reported.revision; data.assessment={probabilities:reported.probabilities}; }
       const result = await api(`/api/runs/${app.run.run_id}/step`, data);
-      const selected = [...$('choices').children].find(b => b.dataset.choice === result.last_decision.choice);
-      selected?.classList.add('selected'); showDecision(result.last_decision);
-      await wait(turner.reduced ? 30 : 320);
-      if (['story_rpg', 'lonewolf_kai'].includes(result.mode) && result.current === app.run.current) {
-        render(result); // A combat round or inventory action is not a new passage.
+      showDecision(result.last_decision);
+      await ReaderUI.annotate(result.last_decision, {audio, reduced: turner.reduced});
+      if (result.current === app.run.current) {
+        render(result); // Inventory/combat rounds never move the book's folio.
       } else {
-        await turner.turn(() => render(result));
+        ReaderUI.phase('turning');
+        await turner.turn(() => render(result), {from: app.run.pagination, to: result.pagination});
       }
       if (result.mode === 'story_rpg' && result.status === 'live') window.RPGUI?.sound(result.last_decision.events, audio);
       if (result.mode === 'lonewolf_kai' && result.status === 'live') window.KaiUI?.sound(result.last_decision.events, audio);
@@ -235,18 +241,20 @@
         try { render(await api(`/api/runs/${app.run.run_id}`)); } catch (_) {}
       }
     } finally {
-      app.busy = false; controls();
+      app.busy = false; ReaderUI.phase('ready'); controls();
       if (app.auto && app.run.status === 'live') app.timer = setTimeout(() => step(), Number($('pace').value));
     }
   }
-  async function newRun({book, profile, seed, kaiConfig} = {}) {
-    stop(true); app.busy = true; controls();
+  async function newRun({book, profile, seed, kaiConfig, choiceOrder} = {}) {
+    stop(true); app.error = null; app.busy = true; ReaderUI.phase('thinking'); controls();
     try {
       const payload = {book: book || app.run?.book || 'ashbell', profile: profile ?? $('profile').value, seed: seed ?? Number($('seed').value)};
+      payload.choice_order = choiceOrder || $('orderMode').value || 'balanced';
+      savePref('gb.orderMode', payload.choice_order);
       if (payload.book === 'aon_kai') payload.kai_config = kaiConfig || readKaiConfig();
       const run = await api('/api/runs', payload);
       render(run); $('events').replaceChildren(); log('A new journey', run.title); $('notice').hidden = true;
-    } finally { app.busy = false; controls(); }
+    } finally { app.busy = false; ReaderUI.phase('ready'); controls(); }
   }
   function readKaiConfig() {
     const disciplines = [...document.querySelectorAll('input[name="kaiDiscipline"]:checked')].map(el => el.value);
@@ -327,8 +335,8 @@
   document.addEventListener('keydown', event => {
     if ($('settings').open || $('journalDialog').open || /^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(event.target.tagName) || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
     if (/^[1-9]$/.test(event.key)) {
-      const choice = app.run?.section.choices[Number(event.key) - 1];
-      if (choice) { event.preventDefault(); step(choice.key); }
+      const button = $('choices').children[Number(event.key)-1];
+      if (button && !button.disabled && button.dataset.choice) { event.preventDefault(); step(button.dataset.choice); }
     } else if (event.code === 'Space') { event.preventDefault(); step(); }
     else if (event.key.toLowerCase() === 'a') { event.preventDefault(); $('autoBtn').click(); }
     else if (event.key === 'Escape') stop();
@@ -353,11 +361,31 @@
     } catch (error) {
       app.error = error.message; $('connection').classList.add('error'); $('connection').querySelector('span').textContent = 'CONNECTION ERROR';
       notice(`接続できませんでした。python web_app.py で起動してください。 ${error.message}`, true);
-    } finally { app.busy = false; controls(); }
+    } finally { app.busy = false; ReaderUI.phase('ready'); controls(); }
   }
+  window.ReaderUI?.init();
   window.RPGUI?.init(key => step(key));
   window.KaiUI?.init(key => step(key));
   // Read-only state plus public UI operations for automated interaction tests.
-  window.gamebook = {app, audio, turner, step, newRun, stop};
+  function observe() {
+    const r=app.run;
+    if (!r) return {ready:false};
+    return JSON.parse(JSON.stringify({run_id:r.run_id, revision:r.revision,
+      ready:app.ready && !app.busy, phase:document.body.dataset.phase,
+      book:r.title, current:r.current, mode:r.mode, status:r.status,
+      objective:r.objective, passage:r.section.text, character:r.character,
+      combat:r.combat_state, choices:r.section.choices,
+      last_result:r.last_decision, pagination:r.pagination}));
+  }
+  async function chooseWithProbabilities(report) {
+    if(app.busy)throw new Error('Wait until gamebook.observe().ready is true.');
+    if(!report || report.run_id!==app.run?.run_id || report.revision!==app.run?.revision)
+      throw new Error('Stale observation. Read gamebook.observe() again.');
+    if(!app.run.section.choices.some(a=>a.key===report.choice))throw new Error('Unknown action ID.');
+    await step(report.choice,report);
+    if(app.error)throw new Error(app.error);
+    return observe();
+  }
+  window.gamebook = {app, audio, turner, step, newRun, stop, observe, chooseWithProbabilities};
   boot();
 })();

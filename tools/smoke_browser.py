@@ -46,7 +46,7 @@ def exercise(page, server, memory, output):
     assert page.evaluate('gamebook.app.run.path') == ['1', '7']
     assert page.evaluate('gamebook.app.run.last_decision.source') == 'manual'
     assert page.locator('#confidenceRow').is_hidden()
-    assert 'paper' in page.evaluate('gamebook.audio.events.map(e=>e.kind)')
+    assert {'paper','flutter'} & set(page.evaluate('gamebook.audio.events.map(e=>e.kind)'))
     # Real seeded random baseline; never label it a Jev inference.
     page.evaluate("gamebook.newRun({book:'demo',seed:1})")
     page.locator('#stepBtn').click(); page.wait_for_function('!gamebook.app.busy')

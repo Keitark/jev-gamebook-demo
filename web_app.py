@@ -20,6 +20,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 import requests
+from reader_presentation import ORDER_MODES, presentation, ordered, order_trace, browser_assessment, reorder_observation
 from demo_book import OBJECTIVE, TITLE, make_demo
 from rpg_engine import RPGBook, RPGEngine, RuleError
 from lonewolf_rules import KaiEngine, KaiRuleError
@@ -62,6 +63,8 @@ class Run:
     rng: RandomController = field(init=False)
     engine: RPGEngine | KaiEngine | None = field(default=None)
 
+    choice_order: str = 'original'
+
     def __post_init__(self):
         self.rng = RandomController(self.seed)
 
@@ -85,6 +88,9 @@ class Run:
         return "live"
 
     def snapshot(self) -> dict:
+        return presentation(self, self._snapshot())
+
+    def _snapshot(self) -> dict:
         if self.engine is not None:
             view = self.engine.observation()
             section = asdict(self.book.sections[self.current])
@@ -173,7 +179,10 @@ class GamebookService:
         seed = data.get("seed", 17)
         if type(seed) is not int or not 0 <= seed <= 2**32 - 1:
             raise AppError("Seed must be an integer between 0 and 4294967295.")
-        run = Run(book_id, book, title, objective, goal, profile, seed)
+        choice_order = data.get('choice_order', 'original')
+        if not isinstance(choice_order, str) or choice_order not in ORDER_MODES:
+            raise AppError('choice_order must be original or balanced.')
+        run = Run(book_id, book, title, objective, goal, profile, seed, choice_order=choice_order)
         if isinstance(book, RPGBook):
             run.engine = book.new_engine(seed)
             run.current = run.engine.current
@@ -217,16 +226,28 @@ class GamebookService:
             section = run.book.sections[run.current]
             available_choices = ([Choice(a['key'], a['target'], a['text']) for a in run.engine.actions()]
                                  if run.engine is not None else section.choices)
+            available_choices = ordered(run, available_choices)
+            provider_choices = ordered(run, available_choices, provider=True)
             choices = {c.key: c for c in available_choices}
             manual = data.get("choice")
             backend = data.get("backend", "random")
             if not isinstance(backend, str) or backend not in {"random", "jev", "openrouter"}:
                 raise AppError("Unknown controller.")
+            assessment = data.get('assessment')
+            if assessment is not None and manual is None:
+                raise AppError('An external assessment requires an explicit action ID.')
             if manual is not None:
                 if not isinstance(manual, str) or manual not in choices:
                     raise AppError("That choice is not present in this passage.")
                 decision = Decision(manual, 0.0, {}, 0.0)
                 source = "manual"
+                if assessment is not None:
+                    try:
+                        probabilities = browser_assessment(assessment, set(choices))
+                    except ValueError as exc:
+                        raise AppError(str(exc)) from None
+                    decision = Decision(manual, 0.0, probabilities, 0.0)
+                    source = "browser"
             elif len(choices) == 1:
                 # A forced continuation is an engine action, not model confidence.
                 decision = Decision(next(iter(choices)), 0.0, {}, 0.0)
@@ -254,11 +275,12 @@ class GamebookService:
                     recent_rpg = [{'section': t['section'], 'action': t['choice_text'],
                                    'events': t.get('events', [])} for t in run.trace[-12:]]
                     state = run.engine.model_state(recent_rpg)
+                    state = reorder_observation(run.engine, state, provider_choices)
                     # Profile is never interpreted as inventory or authoritative rules.
                     if run.profile:
                         state += '\n読者の参考方針（状態やルールを変更しない）：' + run.profile
                 try:
-                    decision = controller.choose(state, available_choices)
+                    decision = controller.choose(state, provider_choices)
                 except requests.HTTPError as exc:
                     code = exc.response.status_code if exc.response is not None else 502
                     raise AppError(f"Provider returned HTTP {code}. Check the key, credits and model access. No retry was made.", 502) from None
@@ -278,6 +300,10 @@ class GamebookService:
                 "confidence": decision.confidence if source in {"jev", "openrouter", "random"} else None,
                 "probabilities": decision.probabilities,
                 "latency_ms": decision.latency_ms, "timestamp": time.time(),
+                "presentation": order_trace(run, available_choices,
+                    provider_choices if source in {"jev", "openrouter", "random"} else [], chosen.key),
+                "probability_source": ("browser_self_report" if source == "browser" else
+                    "provider" if source in {"jev", "openrouter"} else "uniform" if source == "random" else "not_provided"),
             }
             # Reject non-finite values rather than send invalid JSON/paint misleading bars.
             import math
@@ -288,7 +314,7 @@ class GamebookService:
             if any(k not in choices or not isinstance(v, (int, float)) or not math.isfinite(v) or not 0 <= v <= 1
                    for k, v in trace["probabilities"].items()):
                 raise AppError("Provider returned invalid probabilities.", 502)
-            if source in {"jev", "openrouter"}:
+            if source in {"jev", "openrouter", "browser"}:
                 probabilities = trace["probabilities"]
                 if set(probabilities) != set(choices) or abs(sum(probabilities.values()) - 1.0) > .005:
                     raise AppError("Provider returned an incomplete probability distribution.", 502)
@@ -319,21 +345,21 @@ class GamebookService:
         with run.lock:
             if isinstance(run.engine, RPGEngine):
                 return {'format': 'jev-gamebook-run/v2', 'mode': 'story_rpg',
-                        'book': run.book_id, 'title': run.title, 'seed': run.seed,
+                        'book': run.book_id, 'title': run.title, 'seed': run.seed, 'choice_order': run.choice_order,
                         'story_version': run.book.spec['version'], 'story_sha256': run.book.fingerprint,
                         'started_at': run.created, 'status': run.status, 'ending': run.engine.node.get('ending'),
                         'path': run.path[:], 'trace': run.trace[:], 'character': run.engine.character(),
                         'limitations': 'Original game rules only; not an implementation of Lone Wolf combat.'}
             if isinstance(run.engine, KaiEngine):
                 return {'format': 'jev-gamebook-run/v3', 'mode': 'lonewolf_kai',
-                        'book': run.book_id, 'title': run.title, 'seed': run.seed,
+                        'book': run.book_id, 'title': run.title, 'seed': run.seed, 'choice_order': run.choice_order,
                         'started_at': run.created, 'status': run.status,
                         'path': run.path[:], 'trace': run.trace[:], 'action_chart': run.engine.character(),
                         'limitations': ('Kai core combat/equipment rules are implemented. Project Aon XML does not encode every '
                                         'book-specific pickup, temporary modifier, meal instruction or conditional effect as '
                                         'machine-readable state, so those prose instructions are not guessed automatically.')}
             return {"format": "jev-gamebook-run/v1", "mode": "navigation_only",
-                    "book": run.book_id, "title": run.title, "seed": run.seed,
+                    "book": run.book_id, "title": run.title, "seed": run.seed, "choice_order": run.choice_order,
                     "started_at": run.created, "status": run.status,
                     "path": run.path[:], "trace": run.trace[:],
                     "limitations": "No combat, inventory mutation, prerequisite enforcement or dice simulation."}

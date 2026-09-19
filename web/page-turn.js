@@ -81,7 +81,22 @@
           ctx.fillRect(x, edge === 'Top' ? y : y + r.height - width, r.width, width);
         }
       }
-      if (node.tagName === 'IMG') {
+      if (node.tagName.toLowerCase() === 'svg') {
+        // Preserve pen annotations on the outgoing sheet, including their tilt.
+        for (const stroke of node.querySelectorAll('path')) {
+          const matrix = stroke.getScreenCTM();
+          if (!matrix) continue;
+          const inkStyle = getComputedStyle(stroke);
+          ctx.save(); ctx.translate(-rect.left, -rect.top);
+          ctx.transform(matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f);
+          ctx.strokeStyle = inkStyle.stroke; ctx.lineWidth = parseFloat(inkStyle.strokeWidth) || 2;
+          ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+          const outline = new Path2D(stroke.getAttribute('d'));
+          // Non-scaling circle strokes are transformed back to CSS-pixel width.
+          if (inkStyle.vectorEffect === 'non-scaling-stroke') ctx.lineWidth /= Math.max(.1, Math.hypot(matrix.a, matrix.b));
+          ctx.stroke(outline); ctx.restore();
+        }
+      } else if (node.tagName === 'IMG') {
         if (node.complete && node.naturalWidth) {
           const scale = Math.min(r.width / node.naturalWidth, r.height / node.naturalHeight);
           const w = node.naturalWidth * scale, h = node.naturalHeight * scale;
@@ -117,6 +132,25 @@
     return points;
   }
 
+
+  function travelPlan(from, to) {
+    const delta=from&&to?to.spread-from.spread:1, distance=Math.abs(delta);
+    const sheets=Math.min(9,distance), leafDuration=distance>1?440:660, stagger=distance>1?110:0;
+    return {direction:delta<0?-1:1,distance,sheets,leafDuration,stagger,
+      duration:distance?leafDuration+stagger*(sheets-1):0,from:from?.right??1,to:to?.right??3};
+  }
+  function neutralPaper(reference, folio) {
+    const c=document.createElement('canvas');c.width=reference.width;c.height=reference.height;
+    const ctx=c.getContext('2d'),w=c.width,h=c.height;
+    const gradient=ctx.createLinearGradient(0,0,w,0);gradient.addColorStop(0,'#d9c8a6');gradient.addColorStop(.12,'#ede0c3');gradient.addColorStop(.9,'#eee1c5');gradient.addColorStop(1,'#dacaac');
+    ctx.fillStyle=gradient;ctx.fillRect(0,0,w,h);ctx.strokeStyle='#846b4330';ctx.lineWidth=.8;
+    for(let i=0;i<18;i++){const y=h*(.19+i*.032);ctx.beginPath();ctx.moveTo(w*.13,y);ctx.lineTo(w*(.8+(i%3)*.03),y);ctx.stroke();}
+    ctx.fillStyle='#745839';ctx.font=`${Math.round(w*.025)}px Georgia,serif`;ctx.textAlign='center';
+    ctx.fillText('THE DECISION LIBRARY',w/2,h*.085);ctx.fillText(`— ${folio} —`,w/2,h*.955);
+    // Neutral unexamined leaves; no future story text is requested or exposed.
+    return c;
+  }
+
   class PageTurn {
     constructor({book, spread, stage, onRenderer, audio}) {
       this.book = book; this.spread = spread; this.stage = stage;
@@ -145,64 +179,85 @@
         if (!this.busy) this.onRenderer('Three.js r180 · curved mesh');
       } catch (_) { /* Offline / no GPU: keep the fully functional CSS renderer. */ }
     }
-    async turn(renderNext) {
+    async turn(renderNext, {from, to} = {}) {
       if (this.busy) return;
-      this.busy = true; this.book.classList.add('turning');
+      const plan = travelPlan(from, to);
+      if (!plan.distance) { renderNext(); return; }
+      this.lastPlan = plan; this.busy = true; this.book.classList.add('turning');
       const right = document.getElementById('rightPage'), left = document.getElementById('leftPage');
       const mobile = getComputedStyle(left).display === 'none';
       const rect = this.spread.getBoundingClientRect(), w = mobile ? rect.width : rect.width / 2, h = rect.height;
-      let cleanup = () => {};
+      const cleanups = [];
       try {
-        const front = capturePaper(right), oldLeft = capturePaper(left);
+        const oldRight = capturePaper(right), oldLeft = mobile ? null : capturePaper(left);
+        if (!oldRight) { renderNext(); return; }
         const still = document.createElement('div'); still.className = 'sheet-old-left';
-        if (oldLeft) still.style.backgroundImage = `url(${oldLeft.toDataURL()})`;
-        else still.style.display = 'none';
+        still.style.left = plan.direction > 0 ? '0' : '50%';
+        const stationary = plan.direction > 0 ? oldLeft : oldRight;
+        if (stationary && !mobile) still.style.backgroundImage = `url(${stationary.toDataURL()})`;
+        else still.hidden = true;
         this.stage.append(still);
-        // A front cover prevents a new-text flash while the back texture is captured.
         const cover = document.createElement('div'); cover.className = 'sheet-old-left';
-        cover.style.left = mobile ? '0' : '50%'; cover.style.width = mobile ? '100%' : '50%';
-        cover.style.backgroundImage = `url(${front.toDataURL()})`; cover.style.zIndex = '5';
-        this.stage.append(cover);
+        cover.style.left = mobile || plan.direction < 0 ? '0' : '50%';
+        cover.style.width = mobile ? '100%' : '50%';
+        cover.style.backgroundImage = `url(${(plan.direction > 0 || mobile ? oldRight : oldLeft).toDataURL()})`;
+        cover.style.zIndex = '50';this.stage.append(cover);
         renderNext();
-        const back = capturePaper(mobile ? right : left);
+        const nextRight = capturePaper(right), nextLeft = mobile ? null : capturePaper(left);
         if (this.reduced || mobile) {
-          this.audio.play('paper', .32);
-          const animation = cover.animate([{opacity: 1, transform: 'translateX(0)'}, {opacity: 0, transform: 'translateX(-12px)'}], {duration: 240, easing: 'ease-out'});
-          await animation.finished;
+          this.audio.play('paper', .25, plan.direction);
+          await cover.animate([{opacity:1,transform:'translateX(0)'},
+            {opacity:0,transform:`translateX(${-12*plan.direction}px)`}],{duration:this.reduced?150:260,easing:'ease-out'}).finished;
           return;
         }
-        const shadow = document.createElement('div'); shadow.className = 'sheet-shadow'; this.stage.append(shadow);
-        const mode = this.engine;
-        let frame;
-        if (mode === 'three') {
-          try {
-            const three = this.makeThree(front, back, w, h);
-            frame = three.frame; cleanup = three.cleanup;
-          } catch (_) {
-            this.engine = 'css3d'; this.onRenderer('CSS 3D · curved paper');
-          }
+        const counter=document.createElement('div');counter.className='riffle-counter';this.book.append(counter);cleanups.push(()=>counter.remove());
+        const sheets=[];
+        for(let i=0;i<plan.sheets;i++) {
+          const fraction=(i+1)/plan.sheets;
+          const page=Math.round(plan.from+(plan.to-plan.from)*fraction);
+          const neutral=neutralPaper(oldRight,page);
+          sheets.push({front:plan.direction>0 ? (i===0?oldRight:neutral) : (i===plan.sheets-1?nextRight:neutral),
+            back:plan.direction>0 ? (i===plan.sheets-1?nextLeft:neutral) : (i===0?oldLeft:neutral)});
         }
-        if (!frame) {
-          const css = this.makeStrips(front, back, w, h); frame = css.frame; cleanup = css.cleanup;
+        let render;
+        if(this.engine==='three') {
+          try { const batch=this.makeThreeStack(sheets,w,h);render=batch.frame;cleanups.push(batch.cleanup); }
+          catch(_) { this.engine='css3d'; this.onRenderer('CSS 3D · curved paper'); }
         }
-        frame(0); cover.remove();
-        this.audio.play('paper', this.duration / 1000);
-        this.onRenderer(this.engine === 'three' ? 'Three.js r180 · curved mesh' : 'CSS 3D · curved paper');
-        await new Promise(resolve => {
-          const started = performance.now();
-          const draw = now => {
-            const t = clamp((now - started) / this.duration, 0, 1);
-            this.lastProgress = t; frame(t);
-            const p = smooth(t);
-            shadow.style.opacity = String(Math.sin(Math.PI * p) * .18);
-            shadow.style.transform = `scaleX(${.35 + Math.abs(Math.cos(Math.PI * p)) * .65})`;
-            if (t < 1) requestAnimationFrame(draw); else resolve();
-          };
-          requestAnimationFrame(draw);
+        if(!render) {
+          const leaves=sheets.map(({front,back})=>this.makeStrips(front,back,w,h));
+          cleanups.push(()=>leaves.forEach(leaf=>leaf.cleanup()));
+          render=(positions)=>leaves.forEach((leaf,i)=>{
+            const t=positions[i]; leaf.element.style.zIndex=String(t<.5 ? sheets.length-i+3 : sheets.length+i+3);
+            leaf.frame(t);
+          });
+        }
+        const shadow=document.createElement('div');shadow.className='sheet-shadow';this.stage.append(shadow);
+        shadow.style.left=plan.direction>0?'50%':'0';
+        const sounded=new Set();
+        render(sheets.map(()=>plan.direction>0?0:1));
+        // Prime the layered textures before starting the clock. Setup latency must
+        // not compress the first paper sounds into a single frame.
+        await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+        cover.remove(); const started=performance.now();
+        await new Promise(resolve=>{
+          const draw=now=>{
+            const elapsed=Math.min(now-started,plan.duration);
+            const positions=sheets.map((_,i)=>{
+              const raw=clamp((elapsed-i*plan.stagger)/plan.leafDuration,0,1);
+              if(raw>0&&!sounded.has(i)){sounded.add(i);this.audio.play(plan.sheets===1?'paper':'flutter',plan.sheets===1?.55:.1,plan.direction);}
+              return plan.direction>0?raw:1-raw;
+            });
+            this.lastProgress=elapsed/plan.duration;render(positions);
+            const movement=smooth(this.lastProgress);
+            counter.textContent=`${plan.direction>0?'→':'←'}  p.${Math.round(plan.from+(plan.to-plan.from)*movement)} / ${to?.total||'—'}  ·  ${plan.distance}見開き`;
+            shadow.style.opacity=String(Math.sin(Math.PI*movement)*.13);
+            if(elapsed<plan.duration)requestAnimationFrame(draw);else resolve();
+          };requestAnimationFrame(draw);
         });
       } finally {
-        cleanup(); this.stage.replaceChildren(); this.book.classList.remove('turning');
-        this.busy = false; this.lastProgress = null;
+        cleanups.reverse().forEach(cleanup=>cleanup());
+        this.stage.replaceChildren();this.book.classList.remove('turning');this.busy=false;this.lastProgress=null;
       }
     }
     makeStrips(front, back, w, h) {
@@ -223,6 +278,7 @@
       }
       this.stage.append(container);
       return {
+        element: container,
         frame(t) {
           const pts = curve(w, t, count);
           strips.forEach((s, i) => {
@@ -234,50 +290,45 @@
         cleanup: () => container.remove()
       };
     }
-    makeThree(front, back, w, h) {
-      const T = this.THREE, renderer = this.renderer, cols = 56, rows = 12;
-      const pad = Math.ceil(h * .45), totalW = w * 2 + pad * 2, totalH = h + pad * 2;
-      renderer.setSize(totalW, totalH);
-      Object.assign(renderer.domElement.style, {left: `${-pad}px`, top: `${-pad}px`, width: `${totalW}px`, height: `${totalH}px`});
+    makeThreeStack(sheets, w, h) {
+      const T=this.THREE, renderer=this.renderer, cols=56, rows=12;
+      const pad=Math.ceil(h*.45), totalW=w*2+pad*2, totalH=h+pad*2;
+      renderer.setSize(totalW,totalH);
+      Object.assign(renderer.domElement.style,{left:`${-pad}px`,top:`${-pad}px`,width:`${totalW}px`,height:`${totalH}px`});
       this.stage.append(renderer.domElement);
-      const scene = new T.Scene();
-      const camera = new T.PerspectiveCamera(2 * Math.atan(totalH / 3000) * 180 / Math.PI, totalW / totalH, 1, 3000);
-      camera.position.z = 1500;
-      const geometry = new T.BufferGeometry();
-      const positions = new Float32Array((cols + 1) * (rows + 1) * 3);
-      const colors = new Float32Array(positions.length), uvs = new Float32Array((cols + 1) * (rows + 1) * 2), indices = [];
-      for (let y = 0; y <= rows; y++) for (let x = 0; x <= cols; x++) {
-        const i = y * (cols + 1) + x; uvs[i * 2] = x / cols; uvs[i * 2 + 1] = 1 - y / rows;
-        if (y < rows && x < cols) { const a = i, b = i + 1, c = i + cols + 1, d = c + 1; indices.push(a, c, b, b, c, d); }
-      }
-      geometry.setAttribute('position', new T.BufferAttribute(positions, 3).setUsage(T.DynamicDrawUsage));
-      geometry.setAttribute('color', new T.BufferAttribute(colors, 3).setUsage(T.DynamicDrawUsage));
-      geometry.setAttribute('uv', new T.BufferAttribute(uvs, 2)); geometry.setIndex(indices);
-      const ftex = new T.CanvasTexture(front), btex = new T.CanvasTexture(back);
-      [ftex, btex].forEach(tex => { tex.colorSpace = T.SRGBColorSpace; tex.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 8); });
-      btex.repeat.x = -1; btex.offset.x = 1;
-      const fmat = new T.MeshBasicMaterial({map: ftex, side: T.FrontSide, vertexColors: true, toneMapped: false});
-      const bmat = new T.MeshBasicMaterial({map: btex, side: T.BackSide, vertexColors: true, toneMapped: false});
-      const frontMesh = new T.Mesh(geometry, fmat), backMesh = new T.Mesh(geometry, bmat);
-      frontMesh.frustumCulled = backMesh.frustumCulled = false; scene.add(frontMesh, backMesh);
+      const scene=new T.Scene(), camera=new T.PerspectiveCamera(2*Math.atan(totalH/3000)*180/Math.PI,totalW/totalH,1,3000);
+      camera.position.z=1500;
+      const resources=sheets.map(({front,back})=>{
+        const geo=new T.PlaneGeometry(w,h,cols,rows), positions=geo.attributes.position;
+        positions.setUsage(T.DynamicDrawUsage);
+        const colors=new Float32Array(positions.count*3).fill(1);
+        geo.setAttribute('color',new T.BufferAttribute(colors,3).setUsage(T.DynamicDrawUsage));
+        const ft=new T.CanvasTexture(front),bt=new T.CanvasTexture(back);
+        [ft,bt].forEach(tex=>{tex.colorSpace=T.SRGBColorSpace;tex.anisotropy=Math.min(renderer.capabilities.getMaxAnisotropy(),4);});
+        bt.repeat.x=-1;bt.offset.x=1;
+        const fm=new T.MeshBasicMaterial({map:ft,side:T.FrontSide,vertexColors:true,toneMapped:false});
+        const bm=new T.MeshBasicMaterial({map:bt,side:T.BackSide,vertexColors:true,toneMapped:false});
+        const f=new T.Mesh(geo,fm),b=new T.Mesh(geo,bm);f.frustumCulled=b.frustumCulled=false;scene.add(f,b);
+        return {geo,positions,colors,ft,bt,fm,bm};
+      });
       return {
-        frame(t) {
-          const pts = curve(w, t, cols), bend = Math.sin(Math.PI * t);
-          for (let y = 0; y <= rows; y++) for (let x = 0; x <= cols; x++) {
-            const i = (y * (cols + 1) + x) * 3, p = pts[x];
-            positions[i] = p.x;
-            positions[i + 1] = h / 2 - y * h / rows;
-            positions[i + 2] = p.z + 1 + bend * 13 * (y / rows - .5) * (x / cols) ** 2;
-            const shade = 1 - bend * (.025 + .08 * Math.abs(Math.sin(p.angle)));
-            colors[i] = colors[i + 1] = colors[i + 2] = shade;
-          }
-          geometry.attributes.position.needsUpdate = true; geometry.attributes.color.needsUpdate = true;
-          renderer.render(scene, camera);
+        frame(progresses){
+          resources.forEach((r,i)=>{
+            const t=progresses[i], pts=curve(w,t,cols), bend=Math.sin(Math.PI*t);
+            for(let y=0;y<=rows;y++)for(let x=0;x<=cols;x++) {
+              const j=y*(cols+1)+x,p=pts[x];
+              r.positions.setXYZ(j,p.x,h/2-y*h/rows,p.z+1+(t<.5?sheets.length-i:i)*.25+bend*8*(y/rows-.5)*(x/cols)**2);
+              const shade=1-bend*(.04+.08*Math.abs(Math.sin(p.angle)));
+              r.colors[j*3]=r.colors[j*3+1]=r.colors[j*3+2]=shade;
+            }
+            r.positions.needsUpdate=true;r.geo.attributes.color.needsUpdate=true;
+          });renderer.render(scene,camera);
         },
-        cleanup() { renderer.clear(); renderer.domElement.remove(); geometry.dispose(); ftex.dispose(); btex.dispose(); fmat.dispose(); bmat.dispose(); }
+        cleanup(){renderer.clear();renderer.domElement.remove();resources.forEach(r=>{r.geo.dispose();r.ft.dispose();r.bt.dispose();r.fm.dispose();r.bm.dispose();});}
       };
     }
+
   }
   window.PageTurn = PageTurn;
-  window.GamebookPaper = {capturePaper, curve};
+  window.GamebookPaper = {capturePaper, curve, travelPlan};
 })();

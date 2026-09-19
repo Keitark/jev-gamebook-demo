@@ -11,6 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=UnifrakturMaguntia&family=Shippori+Mincho:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
   <link rel="stylesheet" href="/static/rpg.css">
+  <link rel="stylesheet" href="/static/reader.css">
 </head>
 <body>
   <svg class="icon-defs" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
@@ -52,6 +53,7 @@
         <label class="smallcaps" for="backend">THE READER</label>
         <select id="backend"><option value="random">Random — キー不要</option><option value="jev">Jev — TypeSafe</option><option value="openrouter">Jev — OpenRouter</option></select>
         <p id="backendNote" class="muted-note">候補から均等に選択します。</p>
+        <p id="orderNote" class="muted-note"></p><p id="positionNote" class="muted-note"></p>
       </div>
       <div class="rail-block journey-block">
         <div class="smallcaps">BREADCRUMBS <span id="pathCount">1</span></div>
@@ -67,6 +69,7 @@
 
     <section class="reading-room" aria-label="ゲームブック">
       <div class="room-caption"><span class="diamond">✧</span><span id="bookCaption">AN ORIGINAL SHORT ADVENTURE</span><span class="diamond">✧</span></div>
+      <div class="pagination-bar"><span id="paginationLabel" title="このUI独自の組版。原本のページ番号ではありません。">仮想頁</span><progress id="pageProgress" max="1" value="1" aria-label="本の中の現在位置"></progress></div>
       <div class="book-rest">
         <div id="book" class="book">
           <div class="binding" aria-hidden="true"></div><div class="page-edges" aria-hidden="true"></div>
@@ -91,10 +94,16 @@
               <div class="passage-scroll" id="passageScroll" tabindex="0" aria-label="本文。長い場合はスクロールできます">
                 <div id="combatBanner" class="combat-banner" hidden></div>
                 <article id="storyText" class="story-text"><p>Opening the book…</p></article>
-                <div class="choice-heading"><span></span><em id="choiceHeading">Which path will you take?</em><span></span></div>
-                <div id="choices" class="choices"></div><div id="blockedChoices" class="blocked-choices"></div>
+                <div id="blockedChoices" class="blocked-choices"></div>
+
                 <div id="ending" class="ending" hidden><span class="fleuron">❧</span><strong id="endingTitle"></strong><p id="endingNote"></p></div>
               </div>
+              <section id="actionShelf" class="action-shelf" aria-label="行動選択（位置固定）">
+                <div class="action-shelf-top"><span id="actionCount">ACTIONS</span><span id="inkLegend" hidden></span></div>
+                <div class="choice-heading"><span></span><em id="choiceHeading">Which path will you take?</em><span></span></div>
+                <div id="choices" class="choices"></div>
+                <div id="actionExplanation" class="action-explanation" aria-live="off"></div>
+              </section>
               <footer class="page-footer"><span id="pageHint">Choose a passage to turn the page</span><span id="rightFolio">— 1 —</span></footer>
             </section>
             <div class="gutter" aria-hidden="true"></div>
@@ -107,6 +116,7 @@
         <button id="stepBtn" class="primary-button"><svg><use href="#i-arrow"/></svg><span>次の一手</span><kbd>SPACE</kbd></button>
         <button id="autoBtn" class="secondary-button" aria-pressed="false"><svg><use href="#i-play"/></svg><span>連続実行</span></button>
       </div>
+      <span id="readingPhase" class="sr-only" role="status" aria-live="polite">操作できます</span>
       <div id="helpText" class="reading-help">1–3 で選択 &nbsp; · &nbsp; Space で1手 &nbsp; · &nbsp; A で自動実行</div>
     </section>
 
@@ -132,34 +142,26 @@
       <div class="local-note"><span class="local-dot"></span>APIキーはサーバーの .env のみ</div>
     </aside>
   </main>
-  <footer class="app-footer"><span>KEITARK <i>/</i> EXPERIMENTAL READING ROOM</span><span id="rendererStatus">3D renderer preparing</span><span>JEV × GAMEBOOK &nbsp; · &nbsp; v0.3</span></footer>
+  <footer class="app-footer"><span>KEITARK <i>/</i> EXPERIMENTAL READING ROOM</span><span id="rendererStatus">3D renderer preparing</span><span>JEV × GAMEBOOK &nbsp; · &nbsp; v0.4</span></footer>
   <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
   <dialog id="settings" class="settings">
     <form method="dialog" class="dialog-close"><button class="icon-button" aria-label="設定を閉じる">×</button></form>
     <span class="smallcaps">READING ROOM SETTINGS</span><h2>読書室の設定</h2>
     <label for="bookSelect">本棚</label><select id="bookSelect"><option value="ashbell">灰鐘の港と、名前のない朝（日本語・戦闘あり）</option><option value="demo">The Ashen Gate（オリジナル・キー不要）</option><option value="aon">Flight from the Dark（Project Aon・分岐のみ）</option><option value="aon_kai">Flight from the Dark（Project Aon・Kai互換戦闘）</option></select>
     <div id="aonInstall" class="aon-install" hidden><p>本の本文は同梱していません。<a href="https://www.projectaon.org/en/Main/License" target="_blank" rel="noopener noreferrer">Project Aon の利用条件</a>を確認してから取得してください。</p><label class="check-label"><input type="checkbox" id="licenseCheck">利用条件を確認した</label><button type="button" id="downloadBtn" class="secondary-button">公式XMLを取得</button></div>
+    <label for="orderMode">選択肢の順序</label>
+    <select id="orderMode"><option value="balanced" selected>偏り検証：探索を並べ替え／戦闘は位置固定</option><option value="original">原順：元の順序／戦闘は位置固定</option></select>
+    <p class="settings-note">偏り検証ではAPIへの候補順も独立に並べ替えます。行動ID・効果・確率は変更しません。先頭選択数と実際の順序を記録します。</p>
     <div id="keyStatus" class="key-status"></div>
-    <section id="kaiSetup" class="kai-setup" hidden>
-      <span class="smallcaps">KAI ACTION CHART · STARTING VALUES</span>
-      <p>互換モード用の初期Action Chart。Kai基本ルールに従い、Disciplinesは5つ選択します。</p>
-      <div class="settings-grid kai-numbers"><div><label for="kaiCS">COMBAT SKILL</label><input id="kaiCS" type="number" min="10" max="19" value="15"></div><div><label for="kaiEndurance">ENDURANCE</label><input id="kaiEndurance" type="number" min="20" max="29" value="25"></div></div>
-      <div class="settings-grid"><div><label for="kaiGold">Gold Crowns</label><input id="kaiGold" type="number" min="0" max="50" value="10"></div><div><label for="kaiWeapon">Starting Weapon</label><select id="kaiWeapon"><option value="">Bare hands</option><option>Dagger</option><option>Spear</option><option>Mace</option><option>Short Sword</option><option>Warhammer</option><option selected>Sword</option><option>Axe</option><option>Quarterstaff</option><option>Broadsword</option></select></div></div>
-      <label for="kaiWeaponskill">Weaponskill Weapon</label><select id="kaiWeaponskill"><option>Dagger</option><option>Spear</option><option>Mace</option><option>Short Sword</option><option>Warhammer</option><option selected>Sword</option><option>Axe</option><option>Quarterstaff</option><option>Broadsword</option></select>
-      <fieldset class="discipline-grid"><legend>Kai Disciplines · exactly five</legend>
-        <label><input type="checkbox" name="kaiDiscipline" value="Camouflage">Camouflage</label>
-        <label><input type="checkbox" name="kaiDiscipline" value="Hunting" checked>Hunting</label>
-        <label><input type="checkbox" name="kaiDiscipline" value="Sixth Sense" checked>Sixth Sense</label>
-        <label><input type="checkbox" name="kaiDiscipline" value="Tracking">Tracking</label>
-        <label><input type="checkbox" name="kaiDiscipline" value="Healing" checked>Healing</label>
-        <label><input type="checkbox" name="kaiDiscipline" value="Weaponskill" checked>Weaponskill</label>
-        <label><input type="checkbox" name="kaiDiscipline" value="Mindshield">Mindshield</label>
-        <label><input type="checkbox" name="kaiDiscipline" value="Mindblast" checked>Mindblast</label>
-        <label><input type="checkbox" name="kaiDiscipline" value="Animal Kinship">Animal Kinship</label>
-        <label><input type="checkbox" name="kaiDiscipline" value="Mind Over Matter">Mind Over Matter</label>
-      </fieldset>
-      <p class="settings-note">開始時BackpackはMeal×2＋Healing Potion×1のサンプル構成。本文固有の装備取得や一時補正は、XMLから安全に機械判定できないものは自動適用しません。</p>
-    </section>
+<section id="kaiSetup" class="kai-setup" hidden>
+<span class="smallcaps">KAI ACTION CHART · STARTING VALUES</span>
+<p>互換モード用の初期Action Chart。Kai Disciplinesを5つ選択します。</p>
+<div class="settings-grid"><div><label for="kaiCS">COMBAT SKILL</label><input id="kaiCS" type="number" min="10" max="19" value="15"></div><div><label for="kaiEndurance">ENDURANCE</label><input id="kaiEndurance" type="number" min="20" max="29" value="25"></div></div>
+<div class="settings-grid"><div><label for="kaiGold">Gold Crowns</label><input id="kaiGold" type="number" min="0" max="50" value="10"></div><div><label for="kaiWeapon">Starting Weapon</label><select id="kaiWeapon"><option value="">Bare hands</option><option>Dagger</option><option>Spear</option><option>Mace</option><option>Short Sword</option><option>Warhammer</option><option selected>Sword</option><option>Axe</option><option>Quarterstaff</option><option>Broadsword</option></select></div></div>
+<label for="kaiWeaponskill">Weaponskill Weapon</label><select id="kaiWeaponskill"><option>Dagger</option><option>Spear</option><option>Mace</option><option>Short Sword</option><option>Warhammer</option><option selected>Sword</option><option>Axe</option><option>Quarterstaff</option><option>Broadsword</option></select>
+<fieldset class="discipline-grid"><legend>Kai Disciplines · exactly five</legend><label><input type="checkbox" name="kaiDiscipline" value="Camouflage">Camouflage</label><label><input type="checkbox" name="kaiDiscipline" value="Hunting" checked>Hunting</label><label><input type="checkbox" name="kaiDiscipline" value="Sixth Sense" checked>Sixth Sense</label><label><input type="checkbox" name="kaiDiscipline" value="Tracking">Tracking</label><label><input type="checkbox" name="kaiDiscipline" value="Healing" checked>Healing</label><label><input type="checkbox" name="kaiDiscipline" value="Weaponskill" checked>Weaponskill</label><label><input type="checkbox" name="kaiDiscipline" value="Mindshield">Mindshield</label><label><input type="checkbox" name="kaiDiscipline" value="Mindblast" checked>Mindblast</label><label><input type="checkbox" name="kaiDiscipline" value="Animal Kinship">Animal Kinship</label><label><input type="checkbox" name="kaiDiscipline" value="Mind Over Matter">Mind Over Matter</label></fieldset>
+<p class="settings-note">開始時BackpackはMeal×2＋Healing Potion×1のサンプル構成。本文固有の未対応ルールは自動適用しません。</p>
+</section>
     <label for="profile">プレイヤー情報 <small>Jevへ渡す参考方針。ゲーム内の体力・荷物・Action Chartを上書きするものではありません。</small></label><textarea id="profile" rows="3" maxlength="8000" placeholder="例: Avoid unnecessary risk; preserve ENDURANCE."></textarea>
     <div class="settings-grid"><div><label for="seed">Random seed</label><input id="seed" type="number" value="17" min="0" max="4294967295"></div><div><label for="pace">自動実行の間隔</label><select id="pace"><option value="1600">速め · 1.6秒</option><option value="3000" selected>標準 · 3秒</option><option value="6000">ゆっくり · 6秒</option></select></div></div>
     <label for="volume">音量 <span id="volumeLabel">35%</span></label><input type="range" id="volume" min="0" max="100" value="35">
@@ -177,6 +179,7 @@
   <script defer src="/static/kai-ui.js"></script>
   <script defer src="/static/sound.js"></script>
   <script defer src="/static/page-turn.js"></script>
+  <script defer src="/static/reader-ui.js"></script>
   <script defer src="/static/app.js"></script>
 </body>
 </html>

@@ -41,7 +41,7 @@ def memory_page(page, server):
     svg = base64.b64encode((ROOT / 'web/engraving.svg').read_bytes()).decode()
     html = html.replace('/static/engraving.svg', f'data:image/svg+xml;base64,{svg}')
     page.set_content(html)
-    for style in ('style.css', 'rpg.css'):
+    for style in ('style.css', 'rpg.css', 'reader.css'):
         page.add_style_tag(content=(ROOT / 'web' / style).read_text(encoding="utf-8"))
     page.evaluate('''() => {
         window.fetch = async (url, init = {}) => {
@@ -50,7 +50,7 @@ def memory_page(page, server):
             return new Response(r.body, {status:r.status, headers:{'Content-Type':'application/json'}});
         };
     }''')
-    for name in ['rpg-ui.js', 'kai-ui.js', 'sound.js', 'page-turn.js', 'app.js']:
+    for name in ['rpg-ui.js', 'kai-ui.js', 'sound.js', 'page-turn.js', 'reader-ui.js', 'app.js']:
         page.add_script_tag(content=(ROOT / 'web' / name).read_text(encoding="utf-8"))
     page.wait_for_function('window.gamebook?.app.ready', timeout=10000)
     page.evaluate('document.fonts.ready')

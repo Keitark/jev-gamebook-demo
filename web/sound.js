@@ -35,7 +35,22 @@
   }
   function synth(ctx, destination, kind, when, duration, seed, direction = 1, level = 1) {
     const output = ctx.createGain(); output.gain.value = level; output.connect(destination);
-    if (kind === 'paper' || kind === 'ink') {
+    if (kind === 'slash' || kind === 'flutter') {
+      const length = kind === 'slash' ? .16 : .095;
+      const src=ctx.createBufferSource();src.buffer=noise(ctx,length,seed);
+      const hp=ctx.createBiquadFilter(),band=ctx.createBiquadFilter(),env=ctx.createGain(),pan=ctx.createStereoPanner();
+      hp.type='highpass';hp.frequency.value=kind==='slash'?1000:600;
+      band.type='lowpass';band.Q.value=.6;
+      band.frequency.setValueAtTime(kind==='slash'?7200:4000,when);
+      band.frequency.exponentialRampToValueAtTime(1300,when+length);
+      env.gain.setValueAtTime(0,when);env.gain.linearRampToValueAtTime(kind==='slash'?.55:.35,when+.007);
+      env.gain.exponentialRampToValueAtTime(.0001,when+length);
+      pan.pan.setValueAtTime(.3*direction,when);pan.pan.linearRampToValueAtTime(-.3*direction,when+length);
+      src.connect(hp).connect(band).connect(env).connect(pan).connect(output);
+      src.start(when);src.stop(when+length);
+      src.onended=()=>[src,hp,band,env,pan].forEach(n=>n.disconnect());
+      if(kind==='slash')tone(ctx,output,when+.014,170,.075,.045);
+    } else if (kind === 'paper' || kind === 'ink') {
       const length = kind === 'ink' ? .12 : Math.max(.25, duration);
       const source = ctx.createBufferSource(); source.buffer = noise(ctx, length, seed);
       const hp = ctx.createBiquadFilter(), lp = ctx.createBiquadFilter(), envelope = ctx.createGain();
