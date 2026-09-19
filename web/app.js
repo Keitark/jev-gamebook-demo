@@ -196,12 +196,18 @@
       $('battleLogPanel').hidden = true;
     }
     window.ReaderUI?.decorate(run);
+    window.ReaderScroll?.schedule(run);
     updateScrollHint();
     try { sessionStorage.setItem('gb.run', run.run_id); } catch (_) {}
     controls();
   }
   function updateScrollHint() {
     const el = $('passageScroll');
+    if (window.ReaderScroll?.busy) {
+      $('pageHint').classList.add('scroll-hint');
+      text('pageHint', '↓ 本文をスクロールして読んでいます…');
+      return;
+    }
     const more = el.scrollHeight - el.clientHeight - el.scrollTop > 8;
     $('pageHint').classList.toggle('scroll-hint', more);
     text('pageHint', more ? '↓ ページ内をスクロールして続きを表示' : app.run?.mode === 'story_rpg' ? '荷物・手がかりは左の手帖から確認' : app.run?.mode === 'lonewolf_kai' ? 'Action Chartは左の手帖から確認' : app.run?.section.combat?.length ? 'Combat described · rules not simulated' : 'Choose a passage to turn the page');
@@ -210,6 +216,12 @@
   new ResizeObserver(updateScrollHint).observe($('passageScroll'));
   async function step(choice = null, reported = null) {
     if (app.busy || app.run?.status !== 'live') return;
+    if (window.ReaderScroll?.busy) {
+      app.busy = true; controls();
+      await window.ReaderScroll.finish();
+      app.busy = false; controls();
+      if (app.run?.status !== 'live') return;
+    }
     if (choice) stop(true);
     app.error = null; app.busy = true; controls(); window.ReaderUI?.phase('thinking'); $('notice').hidden = true;
     try {
@@ -364,6 +376,7 @@
     } finally { app.busy = false; ReaderUI.phase('ready'); controls(); }
   }
   window.ReaderUI?.init();
+  window.ReaderScroll?.init();
   window.RPGUI?.init(key => step(key));
   window.KaiUI?.init(key => step(key));
   // Read-only state plus public UI operations for automated interaction tests.
@@ -371,10 +384,12 @@
     const r=app.run;
     if (!r) return {ready:false};
     return JSON.parse(JSON.stringify({run_id:r.run_id, revision:r.revision,
-      ready:app.ready && !app.busy, phase:document.body.dataset.phase,
+      ready:app.ready && !app.busy && !window.ReaderScroll?.busy,
+      phase:window.ReaderScroll?.busy ? 'reading' : document.body.dataset.phase,
       book:r.title, current:r.current, mode:r.mode, status:r.status,
       objective:r.objective, passage:r.section.text, character:r.character,
       combat:r.combat_state, choices:r.section.choices,
+      reading:window.ReaderScroll?.snapshot?.() || null,
       last_result:r.last_decision, pagination:r.pagination}));
   }
   async function chooseWithProbabilities(report) {
