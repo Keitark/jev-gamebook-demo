@@ -12,9 +12,13 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import requests
+from dotenv import load_dotenv
 from lxml import etree
 
 DEFAULT_AON_XML = "https://www.projectaon.org/data/trunk/en/xml/01fftd.xml"
+
+# Load local secrets from repo-root .env. The file is intentionally gitignored.
+load_dotenv(Path(__file__).with_name(".env"))
 
 
 def normalize_section_id(value: str) -> str:
