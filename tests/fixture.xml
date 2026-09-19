@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<book>
+  <section id="title">
+    <data>
+      <section id="numbered" class="numbered">
+        <data>
+          <section id="sect1" class="numbered">
+            <meta><title>1</title></meta>
+            <data>
+              <p>You are at a fork in a dark road.</p>
+              <choice idref="sect2">Take the safe-looking left road and turn to <link-text>2</link-text>.</choice>
+              <choice idref="sect3">Enter the cave and turn to <link-text>3</link-text>.</choice>
+            </data>
+          </section>
+          <section id="sect2" class="numbered">
+            <meta><title>2</title></meta>
+            <data><p>You reach the city gates safely.</p><choice idref="sect4">Enter the city. Turn to <link-text>4</link-text>.</choice></data>
+          </section>
+          <section id="sect3" class="numbered">
+            <meta><title>3</title></meta>
+            <data><p>A monster catches you.</p><deadend>You are dead.</deadend></data>
+          </section>
+          <section id="sect4" class="numbered">
+            <meta><title>4</title></meta>
+            <data><p>You have completed the adventure.</p></data>
+          </section>
+        </data>
+      </section>
+    </data>
+  </section>
+</book>
