@@ -1,0 +1,35 @@
+/* The original Japanese rules edition. No local font binaries are bundled. */
+.rpg-mode{--jp-font:"Shippori Mincho","Noto Serif CJK JP","Yu Mincho","Hiragino Mincho ProN",serif}
+.rpg-mode .paper,.rpg-mode .picked-text,.rpg-mode .events .event-text{font-family:var(--jp-font)}
+.rpg-mode .story-text{font-family:var(--jp-font);font-size:17px;line-height:1.95;letter-spacing:.02em;word-break:normal;overflow-wrap:anywhere}
+.rpg-mode .story-text p:first-child:first-letter{float:none;font:inherit;color:var(--red);margin:0}
+.rpg-mode .passage-header h2{font-family:var(--jp-font);font-size:23px;line-height:1.55;font-weight:600;letter-spacing:.08em}
+.rpg-mode .verso h1{font-family:var(--jp-font);font-size:28px;line-height:1.8;font-weight:500;letter-spacing:.09em}
+.rpg-mode .book-subtitle,.rpg-mode .ledger p{font-family:var(--jp-font);font-style:normal;line-height:1.8}
+.rpg-mode .choice-button{font-family:var(--jp-font);font-size:14px;line-height:1.8}
+.rpg-mode .choice-heading em{font-family:var(--jp-font);font-style:normal;font-size:12px}
+.rpg-mode .choice-target{font-family:var(--ui);white-space:nowrap;font-size:10px}
+.rpg-mode .source-note{line-height:1.8}
+.rpg-mode .picked-text{font-size:13px;line-height:1.9;font-style:normal}
+.rpg-mode .decision-route{font-size:31px}.rpg-mode .events-block{margin-top:20px}
+.rpg-mode .run-stats{margin-bottom:14px}.rpg-mode .run-mark>span{font-size:49px}
+.character-panel{padding:2px 0 14px;border-bottom:1px solid var(--line);margin-bottom:12px}
+.vital-row{display:flex;justify-content:space-between;gap:14px;align-items:center;font-size:10px;margin:7px 0;color:var(--muted)}
+.vital-row strong{font-size:12px;font-variant-numeric:tabular-nums;color:var(--text);font-weight:500}
+progress{appearance:none;width:100%;height:5px;border:0;background:#353a2b;display:block;color:var(--sage);border-radius:2px;overflow:hidden}
+progress::-webkit-progress-bar{background:#353a2b}progress::-webkit-progress-value{background:var(--sage);transition:width .3s}progress::-moz-progress-bar{background:var(--sage)}
+#focusMeter::-webkit-progress-value{background:#bea575}#focusMeter::-moz-progress-bar{background:#bea575}
+.supply-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}.supply-row>div{display:flex;flex-direction:column;gap:4px}.supply-row span{font-size:9px;color:var(--muted)}.supply-row strong{font:23px var(--book-font);color:#ded4b7}.supply-row strong.urgent{color:#edaa89}
+.gear-stats{font-size:9px;line-height:1.8;color:#a4ab95;margin:10px 0 0;letter-spacing:.02em}
+.journal-buttons{display:flex;gap:6px;margin:0 0 20px}.journal-buttons button{color:#d2cfb8;border:1px solid #555b44;background:#b8c89b0a;border-radius:3px;padding:8px 7px;font-size:10px;white-space:nowrap}.journal-buttons button:hover{background:#b8c89b20}.journal-buttons button:last-child{margin-left:auto}
+.battle-panel{border:1px solid #93644c70;background:linear-gradient(150deg,#44342570,#2a241d30);padding:15px;margin:0 0 20px;border-radius:3px}.battle-eyebrow{display:flex;justify-content:space-between;font-size:8px;color:#bda27a;letter-spacing:.12em}.battle-panel h3{font:500 18px/1.6 var(--jp-font);margin:10px 0 14px;color:#e8d3b8}.battle-panel #enemyMeter::-webkit-progress-value{background:#bd816a}.battle-panel #enemyMeter::-moz-progress-bar{background:#bd816a}.enemy-intent{font:500 14px var(--jp-font);margin-top:16px;padding-left:8px;border-left:2px solid #bb8062;color:#e8b597}.battle-panel #enemyHint{font-size:11px;line-height:1.8;color:#bab39e;margin:8px 0}.battle-panel .muted-note{font-size:9px}
+.combat-banner{border:1px solid #8f4b3450;background:#8243330c;color:#823528;font:500 12px var(--jp-font);padding:10px 12px;margin:0 0 18px;letter-spacing:.06em}
+.battle-log{padding:0 0 17px;margin:0 0 22px;border-bottom:1px solid var(--line)}.battle-log .smallcaps{font-size:9px}.battle-log ol{list-style:none;padding:0;margin:12px 0 0;max-height:155px;overflow:auto;scrollbar-width:thin}.battle-log li{font-size:10px;line-height:1.8;color:#a7ae98;margin:4px 0}.battle-log li[data-kind=dice]{color:#c2b18c;font-variant-numeric:tabular-nums}.battle-log li[data-kind=hurt]{color:#e3ab92}.battle-log li[data-kind=victory],.battle-log li[data-kind=heal]{color:#c5d6a3}
+.blocked-choices{margin:16px 0}.blocked-choice{border-top:1px dashed #8e745e55;padding:12px 4px;color:#796b59;font:11px/1.9 var(--jp-font)}.blocked-choice strong{display:block;font-weight:500}.blocked-choice span{display:block;font-size:10px;opacity:.9}
+.journal-dialog{width:660px}.journal-dialog h2{font-family:var(--jp-font,var(--book-font));letter-spacing:.13em}.journal-tabs{display:flex;gap:7px;margin:0 0 18px}.journal-tabs button{background:transparent;border:1px solid #596344;color:#bbc7a4;padding:8px 14px;border-radius:3px;font-size:12px}.journal-tabs button[aria-pressed=true]{background:#333d27;color:#e2d9b7}.journal-card{border-top:1px solid #45503888;padding:16px 0}.journal-card-head{display:flex;gap:12px;justify-content:space-between;align-items:center}.journal-card-head strong{font:500 17px var(--jp-font,serif);color:#e3d4b8}.item-badge{font-size:9px;color:#b2c292;border:1px solid #65794a;padding:2px 6px;border-radius:2px;white-space:nowrap}.journal-card p{font-size:12px;line-height:1.9;color:#afb7a1;margin:9px 0}.journal-action{background:#36432a;border:1px solid #677e4c;border-radius:3px;color:#dce9bf;padding:6px 20px;font-size:11px}.journal-action:disabled{cursor:not-allowed;opacity:.4}
+.rpg-mode .mode-note p{margin:7px 0;font-size:9px;line-height:1.8}
+@media(min-width:1800px){.rpg-mode .story-text{font-size:19px}.rpg-mode .choice-button{font-size:15px}.rpg-mode .passage-header h2{font-size:26px}.rpg-mode .verso h1{font-size:34px}}
+@media(max-width:1050px){.rpg-mode .left-rail{flex-wrap:wrap}.rpg-mode .character-panel{order:10;width:100%;display:grid;grid-template-columns:42px 1fr 42px 1fr;gap:7px 12px;align-items:center;margin:0;padding:8px 0;border:0}.rpg-mode .character-panel .vital-row{display:contents}.rpg-mode .character-panel .vital-row strong{font-size:10px}.rpg-mode .character-panel progress{display:none}.rpg-mode .supply-row{display:flex;margin:0;grid-column:1/3;gap:20px}.rpg-mode .supply-row>div{flex-direction:row;align-items:center;gap:8px}.rpg-mode .supply-row strong{font-size:17px}.rpg-mode .gear-stats{grid-column:3/5;margin:0}.rpg-mode .journal-buttons{order:11;width:100%;margin:0}.rpg-mode .journal-buttons button{flex:1;padding:8px}.rpg-mode .journal-buttons button:last-child{max-width:40px}.rpg-mode .left-rail>.rail-block{margin:0}}
+@media(max-width:760px){.rpg-mode .paper.recto{padding:22px 24px}.rpg-mode .story-text{font-size:17px;line-height:1.95}.rpg-mode .choice-button{font-size:14px}.rpg-mode .passage-header h2{font-size:24px}.rpg-mode .spread{height:710px}.rpg-mode .right-rail .battle-panel{margin-bottom:20px}.rpg-mode .right-rail .decision-route{font-size:29px}.rpg-mode .right-rail .picked-text{font-size:12px}.journal-card-head strong{font-size:16px}.journal-tabs button{padding:8px 10px}.journal-dialog{padding:24px 18px}}
+
+.rpg-mode.large-type .story-text{font-size:21px}.rpg-mode.large-type .choice-button{font-size:16px}

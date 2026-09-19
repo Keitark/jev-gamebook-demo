@@ -35,13 +35,14 @@ def memory_page(page, server):
         except HTTPError as exc:
             return {'status': exc.code, 'body': exc.read().decode()}
     page.expose_function('__localApiTestBridge', bridge)
-    html = (ROOT / 'web/index.html').read_text()
+    html = (ROOT / 'web/index.html').read_text(encoding="utf-8")
     html = re.sub(r'<link[^>]*>', '', html)
     html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.S)
     svg = base64.b64encode((ROOT / 'web/engraving.svg').read_bytes()).decode()
     html = html.replace('/static/engraving.svg', f'data:image/svg+xml;base64,{svg}')
     page.set_content(html)
-    page.add_style_tag(content=(ROOT / 'web/style.css').read_text())
+    for style in ('style.css', 'rpg.css'):
+        page.add_style_tag(content=(ROOT / 'web' / style).read_text(encoding="utf-8"))
     page.evaluate('''() => {
         window.fetch = async (url, init = {}) => {
             if (!String(url).startsWith('/api/')) throw new Error('Not a local test API route');
@@ -49,8 +50,8 @@ def memory_page(page, server):
             return new Response(r.body, {status:r.status, headers:{'Content-Type':'application/json'}});
         };
     }''')
-    for name in ['sound.js', 'page-turn.js', 'app.js']:
-        page.add_script_tag(content=(ROOT / 'web' / name).read_text())
+    for name in ['rpg-ui.js', 'sound.js', 'page-turn.js', 'app.js']:
+        page.add_script_tag(content=(ROOT / 'web' / name).read_text(encoding="utf-8"))
     page.wait_for_function('window.gamebook?.app.ready', timeout=10000)
     page.evaluate('document.fonts.ready')
 
@@ -65,6 +66,7 @@ def main():
             page = browser.new_page(viewport={'width':1600, 'height':1000}, device_scale_factor=1)
             errors = []; page.on('pageerror', lambda error: errors.append(str(error)))
             memory_page(page, server)
+            page.evaluate("gamebook.newRun({book:'demo', seed:17})")
             page.screenshot(path=str(output/'screen-initial.png'))
             print(json.dumps(page.evaluate('''() => ({
                 ready:gamebook.app.ready,renderer:gamebook.turner.engine,overflow:document.body.scrollWidth>innerWidth,

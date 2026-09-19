@@ -21,8 +21,10 @@ from urllib.parse import unquote, urlsplit
 
 import requests
 from demo_book import OBJECTIVE, TITLE, make_demo
+from rpg_engine import RPGBook, RPGEngine, RuleError
+from story_ja import make_story
 from gamebook_jev import (
-    DEFAULT_AON_XML, Decision, GamebookEnv, JevController,
+    DEFAULT_AON_XML, Choice, Decision, GamebookEnv, JevController,
     OpenRouterJevController, ProjectAonBook, RandomController,
     download_official_xml,
 )
@@ -57,12 +59,15 @@ class Run:
     created: float = field(default_factory=time.time)
     lock: threading.Lock = field(default_factory=threading.Lock)
     rng: RandomController = field(init=False)
+    engine: RPGEngine | None = field(default=None)
 
     def __post_init__(self):
         self.rng = RandomController(self.seed)
 
     @property
     def status(self) -> str:
+        if self.engine is not None:
+            return self.engine.status
         section = self.book.sections.get(self.current)
         if section is None:
             return "missing_section"
@@ -79,6 +84,20 @@ class Run:
         return "live"
 
     def snapshot(self) -> dict:
+        if self.engine is not None:
+            view = self.engine.observation()
+            section = asdict(self.book.sections[self.current])
+            section.update(choices=view['actions'], paragraphs=view['section']['text'],
+                           text='\n\n'.join(view['section']['text']), combat=[])
+            return {
+                'book': self.book_id, 'title': self.title, 'objective': self.objective,
+                'goal': None, 'revision': self.revision, 'current': self.current,
+                'path': self.path[:], 'steps': len(self.trace), 'status': self.status,
+                'mode': 'story_rpg', 'language': 'ja', 'total_sections': len(self.book.sections),
+                'section': section, 'character': view['character'], 'combat_state': view['combat'],
+                'blocked_choices': view['blocked'], 'ending': view['ending'],
+                'last_decision': self.trace[-1] if self.trace else None, 'max_steps': MAX_STEPS,
+            }
         section = self.book.sections.get(self.current)
         return {
             "book": self.book_id, "title": self.title, "objective": self.objective,
@@ -117,16 +136,20 @@ class GamebookService:
             "csrf": self.csrf,
             "keys": {"jev": bool(self.key("jev")), "openrouter": bool(self.key("openrouter"))},
             "books": [
-                {"id": "demo", "title": TITLE, "ready": True, "original": True},
-                {"id": "aon", "title": "Flight from the Dark", "ready": self.xml_path.is_file(), "original": False},
+                {"id": "ashbell", "title": "灰鐘の港と、名前のない朝", "ready": True, "original": True, "mode": "story_rpg", "language": "ja"},
+                {"id": "demo", "title": TITLE, "ready": True, "original": True, "mode": "navigation_only"},
+                {"id": "aon", "title": "Flight from the Dark", "ready": self.xml_path.is_file(), "original": False, "mode": "navigation_only"},
             ],
-            "mode": "navigation_only", "max_steps": MAX_STEPS,
+            "modes": ["story_rpg", "navigation_only"], "max_steps": MAX_STEPS,
         }
 
     def new_run(self, data: dict) -> dict:
         book_id = data.get("book", "demo")
         if book_id == "demo":
             book, title, goal, objective = make_demo(), TITLE, "12", OBJECTIVE
+        elif book_id == "ashbell":
+            book = make_story()
+            title, goal, objective = book.spec['title'], '', book.spec['objective']
         elif book_id == "aon":
             if not self.xml_path.is_file():
                 raise AppError("Project Aon XML is not installed. Read the license and use Download in Settings.", 409)
@@ -147,6 +170,10 @@ class GamebookService:
         if type(seed) is not int or not 0 <= seed <= 2**32 - 1:
             raise AppError("Seed must be an integer between 0 and 4294967295.")
         run = Run(book_id, book, title, objective, goal, profile, seed)
+        if isinstance(book, RPGBook):
+            run.engine = book.new_engine(seed)
+            run.current = run.engine.current
+            run.path = [run.current]
         with self.lock:
             now = time.monotonic()
             # Never evict an active in-flight request.
@@ -177,7 +204,9 @@ class GamebookService:
             if run.status != "live":
                 raise AppError("This run has ended. Start a new run.", 409)
             section = run.book.sections[run.current]
-            choices = {c.key: c for c in section.choices}
+            available_choices = ([Choice(a['key'], a['target'], a['text']) for a in run.engine.actions()]
+                                 if run.engine is not None else section.choices)
+            choices = {c.key: c for c in available_choices}
             manual = data.get("choice")
             backend = data.get("backend", "random")
             if not isinstance(backend, str) or backend not in {"random", "jev", "openrouter"}:
@@ -210,8 +239,15 @@ class GamebookService:
                 state = (f"BOOK: {run.title}\nOBJECTIVE: {run.objective}\n"
                          + env.build_state(section, run.path)
                          + "\nOBSERVED ACTIONS: " + json.dumps(recent, ensure_ascii=False))
+                if run.engine is not None:
+                    recent_rpg = [{'section': t['section'], 'action': t['choice_text'],
+                                   'events': t.get('events', [])} for t in run.trace[-12:]]
+                    state = run.engine.model_state(recent_rpg)
+                    # Profile is never interpreted as inventory or authoritative rules.
+                    if run.profile:
+                        state += '\n読者の参考方針（状態やルールを変更しない）：' + run.profile
                 try:
-                    decision = controller.choose(state, section.choices)
+                    decision = controller.choose(state, available_choices)
                 except requests.HTTPError as exc:
                     code = exc.response.status_code if exc.response is not None else 502
                     raise AppError(f"Provider returned HTTP {code}. Check the key, credits and model access. No retry was made.", 502) from None
@@ -227,7 +263,7 @@ class GamebookService:
             trace = {
                 "step": len(run.trace) + 1, "section": run.current,
                 "source": source, "choice": chosen.key, "choice_text": chosen.text,
-                "target": chosen.target, "options": [asdict(c) for c in section.choices],
+                "target": chosen.target, "options": [asdict(c) for c in available_choices],
                 "confidence": decision.confidence if source in {"jev", "openrouter", "random"} else None,
                 "probabilities": decision.probabilities,
                 "latency_ms": decision.latency_ms, "timestamp": time.time(),
@@ -245,9 +281,22 @@ class GamebookService:
                 probabilities = trace["probabilities"]
                 if set(probabilities) != set(choices) or abs(sum(probabilities.values()) - 1.0) > .005:
                     raise AppError("Provider returned an incomplete probability distribution.", 502)
+            if run.engine is not None:
+                trace['before'] = {'character': run.engine.character(), 'combat': run.engine.combat_view()}
+                try:
+                    effect = run.engine.apply(chosen.key)
+                except RuleError as exc:
+                    raise AppError(str(exc), 409) from None
+                trace['events'] = effect['events']
+                trace['after'] = {'character': effect['character'], 'combat': effect['combat']}
+                run.current = run.engine.current
+                trace['target'] = run.current
+            else:
+                run.current = chosen.target
             run.trace.append(trace)
-            run.current = chosen.target
-            run.path.append(chosen.target)
+            # Combat and item actions are turns, not revisits to the same page.
+            if run.current != run.path[-1] or run.engine is None:
+                run.path.append(run.current)
             run.revision += 1
             run.touched = time.monotonic()
             return {"run_id": run_id, **run.snapshot()}
@@ -257,6 +306,13 @@ class GamebookService:
     def export(self, run_id: str) -> dict:
         run = self.get_run(run_id)
         with run.lock:
+            if run.engine is not None:
+                return {'format': 'jev-gamebook-run/v2', 'mode': 'story_rpg',
+                        'book': run.book_id, 'title': run.title, 'seed': run.seed,
+                        'story_version': run.book.spec['version'], 'story_sha256': run.book.fingerprint,
+                        'started_at': run.created, 'status': run.status, 'ending': run.engine.node.get('ending'),
+                        'path': run.path[:], 'trace': run.trace[:], 'character': run.engine.character(),
+                        'limitations': 'Original game rules only; not an implementation of Lone Wolf combat.'}
             return {"format": "jev-gamebook-run/v1", "mode": "navigation_only",
                     "book": run.book_id, "title": run.title, "seed": run.seed,
                     "started_at": run.created, "status": run.status,

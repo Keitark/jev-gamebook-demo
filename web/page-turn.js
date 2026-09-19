@@ -35,7 +35,11 @@
         const p = node.parentElement;
         const isDrop = p.matches('.story-text p:first-child') && node === p.firstChild;
         // Word ranges reflect real line breaks, scroll position and loaded typeface.
-        const matches = [...node.textContent.matchAll(/\S+/g)];
+        const cjk = /[\u3000-\u9fff]/.test(node.textContent);
+        let offset = 0;
+        const matches = cjk ? Array.from(node.textContent, ch => {
+          const part = {0: ch, index: offset}; offset += ch.length; return part;
+        }).filter(part => part[0].trim()) : [...node.textContent.matchAll(/\S+/g)];
         for (const match of matches) {
           const start = match.index, end = start + match[0].length;
           const pieces = isDrop && start === 0 ? [[0, 1], [1, end]] : [[start, end]];

@@ -57,6 +57,22 @@
       source.start(when); source.stop(when + length);
       if (kind === 'paper') tone(ctx, output, when + length * .88, 86, .12, .16);
       source.onended = () => { [source, hp, lp, envelope, pan].forEach(n => n.disconnect()); };
+    } else if (kind === 'clash') {
+      const src = ctx.createBufferSource(); src.buffer = noise(ctx, .19, seed);
+      const filter = ctx.createBiquadFilter(), env = ctx.createGain();
+      filter.type = 'highpass'; filter.frequency.value = 950;
+      env.gain.setValueAtTime(.24, when); env.gain.exponentialRampToValueAtTime(.0001, when + .18);
+      src.connect(filter).connect(env).connect(output); src.start(when); src.stop(when + .19);
+      src.onended = () => { src.disconnect(); filter.disconnect(); env.disconnect(); };
+      tone(ctx, output, when, 430, .09, .23); tone(ctx, output, when, 1173, .045, .16);
+    } else if (kind === 'guard') {
+      tone(ctx, output, when, 160, .16, .12); tone(ctx, output, when + .03, 320, .06, .18);
+    } else if (kind === 'heal') {
+      [392, 493.88, 587.33].forEach((hz, i) => tone(ctx, output, when + i * .1, hz, .055, .45));
+    } else if (kind === 'dice') {
+      [0, .07, .16].forEach((t, i) => tone(ctx, output, when + t, 900 - i * 170, .09 - i * .02, .06));
+    } else if (kind === 'victory') {
+      tone(ctx, output, when, 293.66, .09, .55); tone(ctx, output, when + .1, 440, .06, .5);
     } else if (kind === 'win') {
       [261.63, 329.63, 392].forEach((hz, i) => tone(ctx, output, when + i * .13, hz, .11, .95));
     } else if (kind === 'end') {

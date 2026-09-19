@@ -30,6 +30,7 @@ def exercise(page, server, memory, output):
         page.goto(f'http://127.0.0.1:{server.server_port}', wait_until='domcontentloaded')
         page.wait_for_function('window.gamebook?.app.ready')
         page.evaluate('document.fonts.ready')
+    page.evaluate("gamebook.newRun({book:'demo',seed:17})")
     page.screenshot(path=str(output / 'screen-initial.png'))
     assert page.evaluate('gamebook.app.run.steps') == 0
     assert page.evaluate('gamebook.audio.enabled') is False
@@ -47,7 +48,7 @@ def exercise(page, server, memory, output):
     assert page.locator('#confidenceRow').is_hidden()
     assert 'paper' in page.evaluate('gamebook.audio.events.map(e=>e.kind)')
     # Real seeded random baseline; never label it a Jev inference.
-    page.evaluate('gamebook.newRun({seed:1})')
+    page.evaluate("gamebook.newRun({book:'demo',seed:1})")
     page.locator('#stepBtn').click(); page.wait_for_function('!gamebook.app.busy')
     assert page.evaluate('gamebook.app.run.last_decision.source') == 'random'
     assert page.locator('.probability').count() == 3
@@ -63,7 +64,7 @@ def exercise(page, server, memory, output):
     assert page.evaluate('gamebook.app.run.steps') == steps
     assert not page.evaluate('gamebook.app.auto')
     # Reach an ending by explicit manual choices. These are test inputs, not a model.
-    page.evaluate('gamebook.newRun({seed:1})')
+    page.evaluate("gamebook.newRun({book:'demo',seed:1})")
     page.evaluate('gamebook.turner.reduced=true')
     for expected in ['7', '9', '8', '12']:
         page.locator('[data-choice=c0]').click()
@@ -85,7 +86,7 @@ def exercise(page, server, memory, output):
     page.keyboard.press('Escape')
     assert page.evaluate('gamebook.audio.volume') == .5
     # Long passages retain every paragraph and expose their final choice by scrolling.
-    page.evaluate('gamebook.newRun({seed:1})')
+    page.evaluate("gamebook.newRun({book:'demo',seed:1})")
     sid = page.evaluate('gamebook.app.run.run_id')
     run = server.service.get_run(sid)
     run.book.sections['1'].paragraphs *= 8

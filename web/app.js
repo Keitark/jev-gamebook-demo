@@ -51,6 +51,7 @@
   }
   function controls() {
     const live = app.run?.status === 'live';
+    window.RPGUI?.busy(app.busy);
     $('stepBtn').disabled = app.busy || !live;
     $('resetBtn').disabled = app.busy; $('settingsBtn').disabled = app.busy;
     $('backend').disabled = app.busy; $('exportBtn').disabled = !app.run || app.busy;
@@ -62,7 +63,7 @@
     document.querySelectorAll('.choice-button').forEach(button => { button.disabled = app.busy || !live; });
     if (!live && app.run) text('helpText', '旅が終わりました。記録を保存するか、新しい旅を始めてください。');
     else if (app.auto) text('helpText', '自動実行中 · 停止すると現在の1手を終えて止まります');
-    else text('helpText', '1–3 で選択 · Space で1手 · A で自動実行');
+    else text('helpText', '1–9 で選択 · Space で1手 · A で自動実行');
   }
   function backendNote() {
     const value = $('backend').value;
@@ -106,6 +107,7 @@
       d.source === 'forced' ? '分岐のない続きはエンジンが進めます。モデル呼び出しは不要です。' : '選択確率やconfidenceは、冒険のクリア率ではありません。');
   }
   function render(run) {
+    const previousScroll = app.run?.current === run.current ? $('passageScroll').scrollTop : 0;
     app.run = run;
     const section = run.section;
     text('sectionStat', run.current.padStart(2, '0')); text('movesStat', run.steps); text('visitedStat', new Set(run.path).size);
@@ -143,7 +145,31 @@
       text('endingNote', run.status === 'success' ? (run.book === 'demo' ? 'A letter delivered. A path remembered.' : 'Ending section reached. Full rules were not simulated.') : `Run stopped: ${run.status.replaceAll('_', ' ')}.`);
     }
     updateScrollHint(); requestAnimationFrame(updateScrollHint);
-    $('passageScroll').scrollTop = 0; showDecision(run.last_decision);
+    $('passageScroll').scrollTop = previousScroll; showDecision(run.last_decision);
+    window.RPGUI?.render(run);
+    if (run.mode === 'story_rpg') {
+      text('runStatus', run.status === 'live' ? (run.combat_state ? '戦闘中' : '探索中') : '終幕');
+      text('bookCaption', '灰鐘奇譚 · 戦闘と探索の書');
+      text('sourceNote', '日本語オリジナル作品 · 60節・7つの結末');
+      text('choiceHeading', run.status === 'live' ? (run.combat_state ? '次の一手を、どうする。' : 'どの道を選ぶ。') : 'この旅の結末');
+      text('endingTitle', run.ending?.label || 'この旅を終える。');
+      text('endingNote', run.ending ? '選んだ行動と持ち帰ったものが、この朝を決めた。' : '手数上限に達しました。記録を保存して次の旅へ。');
+      document.querySelector('.book-subtitle').textContent = '潮に沈んだ名前を、岸へ。';
+      document.querySelector('.illustration-caption').textContent = '煤汐の港 · 最後の灰鐘が鳴る前に';
+      document.querySelectorAll('.choice-button').forEach(button => {
+        const a = run.section.choices.find(c => c.key === button.dataset.choice);
+        if (a?.kind && a.kind !== 'story') {
+          button.dataset.kind = a.kind;
+          button.querySelector('.choice-target').textContent = a.kind === 'equipment' ? '装備' : a.kind === 'item' ? '道具' : '一手';
+        }
+      });
+    } else {
+      $('leftPage').lang = 'en'; $('rightPage').lang = 'en';
+      document.querySelector('.book-subtitle').textContent = 'A tale of choices & consequences';
+      document.querySelector('.illustration-caption').textContent = 'THE GATE AT THE END OF THE RIVER';
+      $('battleLogPanel').hidden = true;
+    }
+    updateScrollHint();
     try { sessionStorage.setItem('gb.run', run.run_id); } catch (_) {}
     controls();
   }
@@ -151,7 +177,7 @@
     const el = $('passageScroll');
     const more = el.scrollHeight - el.clientHeight - el.scrollTop > 8;
     $('pageHint').classList.toggle('scroll-hint', more);
-    text('pageHint', more ? '↓ ページ内をスクロールして続きを表示' : app.run?.section.combat?.length ? 'Combat described · rules not simulated' : 'Choose a passage to turn the page');
+    text('pageHint', more ? '↓ ページ内をスクロールして続きを表示' : app.run?.mode === 'story_rpg' ? '荷物・手がかりは左の手帖から確認' : app.run?.section.combat?.length ? 'Combat described · rules not simulated' : 'Choose a passage to turn the page');
   }
   $('passageScroll').addEventListener('scroll', updateScrollHint, {passive:true});
   new ResizeObserver(updateScrollHint).observe($('passageScroll'));
@@ -167,7 +193,12 @@
       const selected = [...$('choices').children].find(b => b.dataset.choice === result.last_decision.choice);
       selected?.classList.add('selected'); showDecision(result.last_decision);
       await wait(turner.reduced ? 30 : 320);
-      await turner.turn(() => render(result));
+      if (result.mode === 'story_rpg' && result.current === app.run.current) {
+        render(result); // A combat round is not a new passage.
+      } else {
+        await turner.turn(() => render(result));
+      }
+      if (result.mode === 'story_rpg' && result.status === 'live') window.RPGUI?.sound(result.last_decision.events, audio);
       const d = result.last_decision;
       log(`§ ${d.section} → § ${d.target}`, sourceNames[d.source]);
       if (result.status !== 'live') {
@@ -188,7 +219,7 @@
   async function newRun({book, profile, seed} = {}) {
     stop(true); app.busy = true; controls();
     try {
-      const run = await api('/api/runs', {book: book || app.run?.book || 'demo', profile: profile ?? $('profile').value, seed: seed ?? Number($('seed').value)});
+      const run = await api('/api/runs', {book: book || app.run?.book || 'ashbell', profile: profile ?? $('profile').value, seed: seed ?? Number($('seed').value)});
       render(run); $('events').replaceChildren(); log('A new journey', run.title); $('notice').hidden = true;
     } finally { app.busy = false; controls(); }
   }
@@ -220,7 +251,7 @@
   });
   $('soundBtn').addEventListener('click', async () => { await audio.toggle(); savePref('gb.sound', audio.enabled); soundButton(); });
   $('settingsBtn').addEventListener('click', () => {
-    stop(); $('bookSelect').value = app.run?.book || 'demo'; refreshStatus(); $('settings').showModal();
+    stop(); $('bookSelect').value = app.run?.book || 'ashbell'; refreshStatus(); $('settings').showModal();
   });
   $('bookSelect').addEventListener('change', refreshStatus);
   $('licenseCheck').addEventListener('change', () => { $('downloadBtn').disabled = !$('licenseCheck').checked; });
@@ -256,7 +287,7 @@
     } catch (error) { notice(error.message, true); }
   });
   document.addEventListener('keydown', event => {
-    if ($('settings').open || /^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(event.target.tagName) || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+    if ($('settings').open || $('journalDialog').open || /^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(event.target.tagName) || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
     if (/^[1-9]$/.test(event.key)) {
       const choice = app.run?.section.choices[Number(event.key) - 1];
       if (choice) { event.preventDefault(); step(choice.key); }
@@ -279,13 +310,14 @@
       if (oldId) {
         try { render(await api(`/api/runs/${oldId}`)); log('Journey resumed', app.run.title); } catch (_) { oldId = null; }
       }
-      if (!oldId) await newRun({book: 'demo', profile: '', seed: 17});
+      if (!oldId) await newRun({book: 'ashbell', profile: '', seed: 17});
       app.ready = true;
     } catch (error) {
       app.error = error.message; $('connection').classList.add('error'); $('connection').querySelector('span').textContent = 'CONNECTION ERROR';
       notice(`接続できませんでした。python web_app.py で起動してください。 ${error.message}`, true);
     } finally { app.busy = false; controls(); }
   }
+  window.RPGUI?.init(key => step(key));
   // Read-only state plus public UI operations for automated interaction tests.
   window.gamebook = {app, audio, turner, step, newRun, stop};
   boot();

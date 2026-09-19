@@ -52,7 +52,7 @@ def main():
                 page.goto(f'http://127.0.0.1:{server.server_port}',wait_until='domcontentloaded')
                 page.wait_for_function('window.gamebook?.app.ready')
                 page.evaluate('document.fonts.ready')
-            page.evaluate('gamebook.newRun({seed:1})')
+            page.evaluate("gamebook.newRun({book:'demo',seed:1})")
             page.locator('#backend').select_option('random')
             if not page.evaluate('gamebook.audio.enabled'): page.locator('#soundBtn').click()
             assert page.evaluate('gamebook.audio.ctx.state')=='running'

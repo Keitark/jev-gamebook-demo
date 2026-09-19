@@ -8,8 +8,9 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=UnifrakturMaguntia&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=UnifrakturMaguntia&family=Shippori+Mincho:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/rpg.css">
 </head>
 <body>
   <svg class="icon-defs" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
@@ -40,6 +41,13 @@
       <div class="rail-heading"><span class="smallcaps">YOUR EXPEDITION</span><span class="thin-line"></span></div>
       <div class="run-mark"><span id="sectionStat">01</span><div>現在の節<span id="runStatus">READY</span></div></div>
       <dl class="run-stats"><div><dt>手数</dt><dd id="movesStat">0</dd></div><div><dt>訪れた節</dt><dd id="visitedStat">1</dd></div></dl>
+      <section id="characterPanel" class="character-panel" aria-label="冒険者の状態" hidden>
+        <div class="vital-row"><label for="hpMeter">体力</label><strong id="hpValue"></strong></div><progress id="hpMeter" max="30" value="30"></progress>
+        <div class="vital-row"><label for="focusMeter">集中</label><strong id="focusValue"></strong></div><progress id="focusMeter" max="4" value="3"></progress>
+        <div class="supply-row"><div><span>銀貨</span><strong id="goldValue">9</strong></div><div><span>潮位</span><strong id="tideValue">0 / 16</strong></div></div>
+        <p id="gearStats" class="gear-stats"></p>
+      </section>
+      <div id="journalButtons" class="journal-buttons" hidden><button id="bagBtn">荷物・装備</button><button id="cluesBtn">手がかり</button><button id="rulesBtn" title="この本のルール">?</button></div>
       <div class="rail-block">
         <label class="smallcaps" for="backend">THE READER</label>
         <select id="backend"><option value="random">Random — キー不要</option><option value="jev">Jev — TypeSafe</option><option value="openrouter">Jev — OpenRouter</option></select>
@@ -53,7 +61,7 @@
       <div class="rail-bottom">
         <button id="exportBtn" class="text-button"><svg><use href="#i-export"/></svg>記録を保存</button>
         <button id="resetBtn" class="text-button"><svg><use href="#i-reset"/></svg>新しい旅を始める</button>
-        <div class="mode-note"><span>NAVIGATION EDITION</span>分岐を辿る実験版です。<br>戦闘・所持品・条件判定は未実装。</div>
+        <div class="mode-note"><span id="modeTitle">NAVIGATION EDITION</span><p id="modeDetail">分岐を辿る実験版です。</p></div>
       </div>
     </aside>
 
@@ -81,9 +89,10 @@
               <div class="running-head"><span id="runningTitle">THE ASHEN GATE</span><span>A DECISION COPY</span></div>
               <div class="passage-header"><span class="section-ornament">— &nbsp; <span id="sectionNumber">1</span> &nbsp; —</span><h2 id="passageTitle">Where the road divides</h2></div>
               <div class="passage-scroll" id="passageScroll" tabindex="0" aria-label="本文。長い場合はスクロールできます">
+                <div id="combatBanner" class="combat-banner" hidden></div>
                 <article id="storyText" class="story-text"><p>Opening the book…</p></article>
                 <div class="choice-heading"><span></span><em id="choiceHeading">Which path will you take?</em><span></span></div>
-                <div id="choices" class="choices"></div>
+                <div id="choices" class="choices"></div><div id="blockedChoices" class="blocked-choices"></div>
                 <div id="ending" class="ending" hidden><span class="fleuron">❧</span><strong id="endingTitle"></strong><p id="endingNote"></p></div>
               </div>
               <footer class="page-footer"><span id="pageHint">Choose a passage to turn the page</span><span id="rightFolio">— 1 —</span></footer>
@@ -102,6 +111,12 @@
     </section>
 
     <aside class="right-rail" aria-label="判断と実行ログ">
+      <section id="battlePanel" class="battle-panel" aria-label="敵の状態" hidden>
+        <div class="battle-eyebrow"><span>ENCOUNTER</span><span id="combatRound"></span></div>
+        <h3 id="enemyName"></h3><div class="vital-row"><label for="enemyMeter">敵の体力</label><strong id="enemyHP"></strong></div><progress id="enemyMeter" max="1" value="1"></progress>
+        <div id="enemyStats" class="gear-stats"></div><div id="enemyIntent" class="enemy-intent"></div><p id="enemyHint"></p><p id="preparedNote" class="muted-note"></p>
+      </section>
+      <section id="battleLogPanel" class="battle-log" hidden><div class="smallcaps">直前の処理結果</div><ol id="battleEvents" aria-live="polite"></ol></section>
       <div class="rail-heading"><span class="smallcaps">THE DECISION</span><span class="thin-line"></span></div>
       <div id="decisionEmpty" class="decision-empty"><div class="oracle-mark">✧</div><p>次の一手を、見届ける。</p><span>判断後に選択確率と応答時間を表示。<br>手動でもページを進められます。</span></div>
       <div id="decisionPanel" hidden>
@@ -117,21 +132,28 @@
       <div class="local-note"><span class="local-dot"></span>APIキーはサーバーの .env のみ</div>
     </aside>
   </main>
-  <footer class="app-footer"><span>KEITARK <i>/</i> EXPERIMENTAL READING ROOM</span><span id="rendererStatus">3D renderer preparing</span><span>JEV × GAMEBOOK &nbsp; · &nbsp; v0.2</span></footer>
+  <footer class="app-footer"><span>KEITARK <i>/</i> EXPERIMENTAL READING ROOM</span><span id="rendererStatus">3D renderer preparing</span><span>JEV × GAMEBOOK &nbsp; · &nbsp; v0.3</span></footer>
   <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
   <dialog id="settings" class="settings">
     <form method="dialog" class="dialog-close"><button class="icon-button" aria-label="設定を閉じる">×</button></form>
     <span class="smallcaps">READING ROOM SETTINGS</span><h2>読書室の設定</h2>
-    <label for="bookSelect">本棚</label><select id="bookSelect"><option value="demo">The Ashen Gate（オリジナル・キー不要）</option><option value="aon">Flight from the Dark（Project Aon）</option></select>
+    <label for="bookSelect">本棚</label><select id="bookSelect"><option value="ashbell">灰鐘の港と、名前のない朝（日本語・戦闘あり）</option><option value="demo">The Ashen Gate（オリジナル・キー不要）</option><option value="aon">Flight from the Dark（Project Aon）</option></select>
     <div id="aonInstall" class="aon-install" hidden><p>本の本文は同梱していません。<a href="https://www.projectaon.org/en/Main/License" target="_blank" rel="noopener noreferrer">Project Aon の利用条件</a>を確認してから取得してください。</p><label class="check-label"><input type="checkbox" id="licenseCheck">利用条件を確認した</label><button type="button" id="downloadBtn" class="secondary-button">公式XMLを取得</button></div>
     <div id="keyStatus" class="key-status"></div>
-    <label for="profile">プレイヤー情報 <small>Jevへ渡す参考テキスト。値は自動更新されません。</small></label><textarea id="profile" rows="3" maxlength="8000" placeholder="例: Kai disciplines: Sixth Sense, Healing. Weapons: Sword."></textarea>
+    <label for="profile">プレイヤー情報 <small>Jevへ渡す参考方針。日本語編の体力・荷物を上書きするものではありません。</small></label><textarea id="profile" rows="3" maxlength="8000" placeholder="例: Kai disciplines: Sixth Sense, Healing. Weapons: Sword."></textarea>
     <div class="settings-grid"><div><label for="seed">Random seed</label><input id="seed" type="number" value="17" min="0" max="4294967295"></div><div><label for="pace">自動実行の間隔</label><select id="pace"><option value="1600">速め · 1.6秒</option><option value="3000" selected>標準 · 3秒</option><option value="6000">ゆっくり · 6秒</option></select></div></div>
     <label for="volume">音量 <span id="volumeLabel">35%</span></label><input type="range" id="volume" min="0" max="100" value="35">
     <div class="settings-grid"><label class="check-label"><input id="motion" type="checkbox">ページめくりを控えめに</label><label class="check-label"><input id="largeType" type="checkbox">本文を大きくする</label></div>
     <p class="settings-note">Jev の選択は有料APIへのリクエストになります。自動実行は停止ボタン・タブを離れる操作・終了節・200手で止まります。通信中の1手は取り消せません。</p>
     <button id="applySettings" type="button" class="primary-button">この設定で新しく始める<svg><use href="#i-arrow"/></svg></button>
   </dialog>
+  <dialog id="journalDialog" class="settings journal-dialog">
+    <form method="dialog" class="dialog-close"><button class="icon-button" aria-label="手帖を閉じる">×</button></form>
+    <span class="smallcaps">THE TRAVELLER'S JOURNAL</span><h2>冒険の手帖</h2>
+    <div class="journal-tabs"><button data-journal-tab="inventory" aria-pressed="true">荷物と装備</button><button data-journal-tab="clues" aria-pressed="false">手がかり</button><button data-journal-tab="rules" aria-pressed="false">ルール</button></div>
+    <div id="journalContents"></div>
+  </dialog>
+  <script defer src="/static/rpg-ui.js"></script>
   <script defer src="/static/sound.js"></script>
   <script defer src="/static/page-turn.js"></script>
   <script defer src="/static/app.js"></script>
