@@ -79,6 +79,7 @@
     if (max <= 18) {
       el.scrollTop = 0;
       state.reason = 'fits';
+      state.busy = false;
       return;
     }
 
@@ -120,6 +121,8 @@
     state.section = run.current;
     cancel('new-section');
     state.section = run.current;
+    state.busy = true;
+    state.reason = 'pending';
     const token = state.token;
     state.promise = run.current ? runAuto(run.current, token) : Promise.resolve();
   }
