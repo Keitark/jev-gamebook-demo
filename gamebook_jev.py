@@ -49,6 +49,8 @@ class Section:
     choices: List[Choice]
     deadend: bool = False
     combat: List[str] = field(default_factory=list)
+    paragraphs: List[str] = field(default_factory=list)
+    title: str = ""
 
 
 class ProjectAonBook:
@@ -75,11 +77,13 @@ class ProjectAonBook:
 
     @staticmethod
     def _parse_sections(root: etree._Element) -> Dict[str, Section]:
+        # Project Aon has a base <section id="numbered" class="numbered"><data>...
         bases = root.xpath('.//*[local-name()="section" and @id="numbered"]')
         if bases:
             data_nodes = bases[0].xpath('./*[local-name()="data"]')
             candidates = data_nodes[0].xpath('./*[local-name()="section"]') if data_nodes else []
         else:
+            # Fallback for structurally similar fixtures / future editions.
             candidates = root.xpath('.//*[local-name()="section" and @id]')
 
         sections: Dict[str, Section] = {}
@@ -97,12 +101,15 @@ class ProjectAonBook:
             for i, ch in enumerate(choice_nodes):
                 target = normalize_section_id(ch.get("idref", ""))
                 txt = element_text(ch)
+                # link-text is sometimes only the destination number. The full
+                # visible choice remains useful to Jev, so we keep it as-is.
                 choices.append(Choice(key=f"c{i}", target=target, text=txt or f"Turn to {target}"))
 
+            # Narrative keeps paragraph boundaries and terminal text for the reader.
             pieces: List[str] = []
             for child in data:
                 tag = etree.QName(child).localname if isinstance(child.tag, str) else ""
-                if tag in {"choice", "deadend", "illustration"}:
+                if tag in {"choice", "illustration"}:
                     continue
                 t = element_text(child)
                 if t:
@@ -121,6 +128,7 @@ class ProjectAonBook:
                 choices=choices,
                 deadend=deadend,
                 combat=combats,
+                paragraphs=pieces,
             )
 
         if not sections:
@@ -181,8 +189,8 @@ class JevController(Controller):
     def choose(self, state: str, choices: List[Choice]) -> Decision:
         criteria = {
             c.key: (
-                "Take this available gamebook action when it is the best legal action for completing "
-                "the adventure alive. Respect any condition stated in the action or current section. "
+                f"Take this available gamebook action when it is the best legal action for completing "
+                f"the adventure alive. Respect any condition stated in the action or current section. "
                 f"Action: {c.text}"
             )
             for c in choices
@@ -251,14 +259,14 @@ class GamebookEnv:
         self.start = normalize_section_id(start)
         self.goal = normalize_section_id(goal)
         self.profile = profile
-        self.history_window = history_window
+        self.history_window = max(0, history_window)
 
     def build_state(self, section: Section, path: List[str]) -> str:
-        history = " -> ".join(path[-self.history_window:])
+        history = " -> ".join(path[-self.history_window:]) if self.history_window else "(not supplied)"
         combat = "; ".join(section.combat) if section.combat else "none explicitly encoded"
         return (
-            "GAME: Lone Wolf / Project Aon gamebook navigation benchmark\n"
-            f"OBJECTIVE: Reach successful ending section {self.goal}.\n"
+            "GAME: Gamebook navigation benchmark\n"
+            "OBJECTIVE: Complete the adventure alive using only observed information.\n"
             f"PLAYER STATE: {self.profile}\n"
             f"RECENT PATH: {history}\n"
             f"CURRENT SECTION: {section.id}\n"
@@ -274,6 +282,8 @@ class GamebookEnv:
         confidences: List[float] = []
         latencies: List[float] = []
 
+        if max_steps < 0:
+            raise ValueError("max_steps must not be negative")
         for step in range(max_steps + 1):
             if current == self.goal:
                 return self._result("success", current, step, path, confidences, latencies, trace)
@@ -285,6 +295,9 @@ class GamebookEnv:
                 return self._result("deadend", current, step, path, confidences, latencies, trace)
             if not section.choices:
                 return self._result("no_choice_terminal", current, step, path, confidences, latencies, trace)
+
+            if step == max_steps:
+                return self._result("max_steps", current, step, path, confidences, latencies, trace)
 
             state = self.build_state(section, path)
             d = controller.choose(state, section.choices)
@@ -308,6 +321,8 @@ class GamebookEnv:
             current = chosen.target
             path.append(current)
 
+            # A loop is not instantly fatal; Jev gets history and may escape it.
+            # Stop only after excessive repetition of the same section.
             if path.count(current) >= 6:
                 return self._result("loop", current, step + 1, path, confidences, latencies, trace)
 
@@ -360,6 +375,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--profile-file", default=None)
     p.add_argument("--jsonl", default="runs.jsonl")
     args = p.parse_args(argv)
+    if args.runs < 1 or args.max_steps < 0:
+        p.error("--runs must be positive and --max-steps non-negative")
 
     xml = Path(args.xml)
     if not xml.exists():
@@ -377,6 +394,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     base_seed = args.seed
     with out.open("a", encoding="utf-8") as f:
         for run_idx in range(args.runs):
+            # Recreate random controller per run with a stable distinct seed; Jev controller is stateless.
             if args.backend == "random":
                 args.seed = base_seed + run_idx
             controller = get_controller(args)

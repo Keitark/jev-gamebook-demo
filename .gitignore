@@ -4,6 +4,8 @@ __pycache__/
 *.pyc
 *.jsonl
 01fftd.xml
+01fftd.download
 .env
 .env.*
 !.env.example
+artifacts/
