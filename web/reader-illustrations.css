@@ -1,0 +1,10 @@
+/* Generated demo-book engraving plates. */
+.passage-plate{
+  float:right;width:38%;max-width:178px;margin:2px 0 12px 17px;padding:0;
+  break-inside:avoid;shape-outside:inset(0 0 0 0);opacity:.94;
+  filter:sepia(.12) contrast(1.04) saturate(.72);
+}
+.passage-plate img{display:block;width:100%;height:auto;max-height:188px;object-fit:contain;object-position:center;mix-blend-mode:multiply;user-select:none;-webkit-user-drag:none}
+.passage-plate::after{content:'';display:block;height:1px;margin:2px 9% 0;background:linear-gradient(90deg,transparent,#6c54374a,transparent)}
+@media(max-height:850px) and (min-width:761px){.passage-plate{width:31%;max-width:145px;margin-left:12px}.passage-plate img{max-height:145px}}
+@media(max-width:760px){.passage-plate{width:34%;max-width:132px;margin:2px 0 9px 12px}.passage-plate img{max-height:145px}}

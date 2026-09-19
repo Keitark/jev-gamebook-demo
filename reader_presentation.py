@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import math
 from typing import Any
+from reader_layout import folio_order
 
 ORDER_MODES = {'original', 'balanced'}
 COMBAT_SLOTS = (
@@ -27,7 +28,7 @@ def _is_item(action: Any) -> bool:
 
 
 def binding(book, section_id: str) -> dict:
-    ids = sorted(book.sections, key=lambda x: (0, int(x)) if x.isdecimal() else (1, x))
+    ids = folio_order(book)
     ordinal = ids.index(section_id) if section_id in book.sections else 0
     return {'edition': 'virtual-one-section-per-spread/v1', 'spread': ordinal,
             'left': 2 + ordinal * 2, 'right': 3 + ordinal * 2,
